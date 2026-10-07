@@ -42,6 +42,7 @@ trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending
 `tt-mock`、`tt-mock-me`（只有模擬模式）。Firebase 自己用 IndexedDB 存離線快取。同網域其他網站用 `izu-`、`hub-` 等前綴，不衝突。
 
 ## 待辦
-1. 使用者上線實測：Pages、規則、授權網域（步驟見 README）。
+1. 使用者已完成 Pages、規則、授權網域三步驟（2026-10-07），待實測登入。
+   邀請連結帶 `?openExternalBrowser=1`（LINE 會改用預設瀏覽器開）；LINE／FB／IG 內建瀏覽器另顯示「請改用 Safari 或 Chrome」提示，因為 Google 不准在內建瀏覽器登入（403 disallowed_useragent）。
 2. 正式名單接到行程網站的餐廳頁（行程網站讀 Firestore `status=='in'` 的公開資料；規則要另外開放）。
 3. 記帳可考慮：照片收據、依類別統計、更多幣別。

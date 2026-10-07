@@ -105,10 +105,12 @@ function render() {
   app().innerHTML = testBar() + ({ exp: pExp, settle: pSettle, resto: pResto, mem: pMem }[p] || pExp)() + tabs(p);
 }
 
-/* 登入 */
+/* 登入：Google 不准在 LINE／FB／IG 內建瀏覽器登入，先提示改用 Safari／Chrome */
+const INAPP = /\bLine\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent);
+const inappTip = () => INAPP ? `<div class="card" style="text-align:left;background:#fde3cf;margin:14px 0 0"><b>請改用 Safari 或 Chrome 開啟</b><div class="small" style="color:var(--ink)">Google 不允許在 LINE 裡面登入。請按右上角「⋯」或右下角的指南針圖示，選「用預設瀏覽器開啟」，或複製網址貼到 Safari／Chrome。</div><button class="btn s" data-act="copy" data-u="${esc(location.href)}">複製這個網址</button></div>` : '';
 function renderLogin(msg) {
   app().innerHTML = testBar() + `<div class="hero"><div style="font-size:44px">🧳</div><h1 class="cap">旅行記帳・餐廳</h1><p>${esc(msg || '和同行的人一起記帳、分帳、推薦餐廳。')}<br>行程內容不用登入也能在行程網站看。</p>
-  <button class="btn g" data-act="login">用 Google 帳號登入</button></div>`;
+  ${inappTip()}<button class="btn g" data-act="login">用 Google 帳號登入</button></div>`;
 }
 /* 首頁：我的行程 */
 async function renderHome() {
@@ -130,7 +132,7 @@ async function renderJoin() {
   const title = m ? m.title : id;
   app().innerHTML = testBar() + `<div class="hero"><div style="height:170px;border-radius:24px;background:${m && m.cover ? `url('/${esc(id)}/${esc(m.cover)}') center/cover` : esc(m && m.color || '#c67139')};margin-bottom:18px"></div>
   <p style="margin:0">你收到一趟行程的邀請</p><h1 class="cap">${esc(title)}</h1><p>登入後可以記一筆花費、看大家的分帳、推薦想吃的店。<br>只有這趟的成員看得到花費。</p>
-  ${me ? `<button class="btn" data-act="join">以 ${esc(me.name)} 加入</button><button class="btn s" data-act="logout">換一個帳號</button>` : `<button class="btn g" data-act="login">用 Google 帳號登入並加入</button>`}<div class="err" id="jerr"></div></div>`;
+  ${me ? `<button class="btn" data-act="join">以 ${esc(me.name)} 加入</button><button class="btn s" data-act="logout">換一個帳號</button>` : `${inappTip()}<button class="btn g" data-act="login">用 Google 帳號登入並加入</button>`}<div class="err" id="jerr"></div></div>`;
   if (me && !key) $('#jerr').textContent = '連結不完整，請向主辦人重新要一次。';
 }
 
@@ -317,7 +319,7 @@ async function drawInvite() {
   const box = $('#inv'); if (!box) return;
   let inv = null; try { inv = await api.getInvite(cur.id); } catch (e) {}
   const live = inv && inv.expires > Date.now();
-  const url = live ? location.origin + BASE + (MOCK ? '?mock=1' : '') + '#/join/' + encodeURIComponent(cur.id) + '/' + inv.key : '';
+  const url = live ? location.origin + BASE + (MOCK ? '?mock=1&' : '?') + 'openExternalBrowser=1#/join/' + encodeURIComponent(cur.id) + '/' + inv.key : '';
   box.innerHTML = live ? `<div class="link"><code>${esc(url)}</code><button class="lnk" data-act="copy" data-u="${esc(url)}">複製</button></div><div class="small" style="margin-top:8px">${new Date(inv.expires).toLocaleDateString('zh-TW')} 失效・<button class="lnk" data-act="newinv">重新產生（舊連結作廢）</button></div>`
     : `<div class="small" style="margin-top:8px">${inv ? '舊的邀請連結已過期。' : '還沒有邀請連結。'}</div><button class="btn" data-act="newinv">產生邀請連結（7 天有效）</button>`;
 }
@@ -327,7 +329,7 @@ document.addEventListener('click', async ev => {
   const el = ev.target.closest('[data-act]'); if (!el) { if (ev.target.id === 'dim') closeSheet(); return; }
   const a = el.dataset.act;
   try {
-    if (a === 'login') return await api.signIn();
+    if (a === 'login') { try { return await api.signIn(); } catch (e) { if (e && e.code === 'auth/popup-closed-by-user') return; return toast(e && e.code === 'auth/popup-blocked' ? '登入視窗被瀏覽器擋住了，請允許彈出視窗後再按一次' : e && e.code === 'auth/unauthorized-domain' ? '這個網址還沒加進 Firebase 已授權的網域' : '登入失敗：' + (e && (e.code || e.message))); } }
     if (a === 'logout') { await api.signOut(); return go('#/'); }
     if (a === 'create') {
       const repo = el.dataset.repo, m = await tripMeta(repo); if (!m) return toast('讀不到這趟的 trip.json');
