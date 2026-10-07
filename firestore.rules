@@ -1,0 +1,81 @@
+rules_version = '2';
+// 旅行記帳・餐廳（測試版）的資料權限。
+// 用法：Firebase 主控台 → Firestore Database → 規則 → 整段貼上 → 發布。
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function tripPath(t) { return /databases/$(database)/documents/trips/$(t); }
+    function isOwner(t) { return signedIn() && get(tripPath(t)).data.owner == request.auth.uid; }
+    function isMember(t) {
+      return signedIn() && (exists(/databases/$(database)/documents/trips/$(t)/members/$(request.auth.uid)) || isOwner(t));
+    }
+
+    // 每個人自己的「我加入了哪些行程」清單
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /trips/{t} {
+      // 還沒建立的行程（resource == null）可以查，才知道能不能建立
+      allow get: if signedIn() && (resource == null || isMember(t));
+      allow list: if false;
+      allow create: if signedIn() && request.resource.data.owner == request.auth.uid;
+      // 成員只能改匯率；主辦人可以改其他欄位，但不能把主辦人換掉
+      allow update: if isMember(t)
+        && request.resource.data.owner == resource.data.owner
+        && (isOwner(t) || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rate']));
+      allow delete: if isOwner(t);
+
+      // 邀請碼：只有主辦人看得到、改得到
+      match /private/{doc} {
+        allow read, write: if isOwner(t);
+      }
+
+      // 成員：自己加自己；不是主辦人的話，要帶有效（沒過期）的邀請碼
+      match /members/{uid} {
+        allow read: if isMember(t);
+        allow create: if signedIn() && request.auth.uid == uid
+          && request.resource.data.uid == uid
+          && (
+            (isOwner(t) && request.resource.data.role == 'owner')
+            || (request.resource.data.role == 'member'
+                && request.resource.data.key == get(/databases/$(database)/documents/trips/$(t)/private/invite).data.key
+                && request.time < get(/databases/$(database)/documents/trips/$(t)/private/invite).data.expires)
+          );
+        allow update: if signedIn() && request.auth.uid == uid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.get('key', null) == resource.data.get('key', null);
+        allow delete: if isOwner(t) || (signedIn() && request.auth.uid == uid);
+      }
+
+      // 花費：成員都能看、能記；只有記帳的人或主辦人能改、能刪
+      match /expenses/{e} {
+        allow read: if isMember(t);
+        allow create: if isMember(t) && request.resource.data.by == request.auth.uid;
+        allow update: if isMember(t)
+          && (resource.data.by == request.auth.uid || isOwner(t))
+          && request.resource.data.by == resource.data.by;
+        allow delete: if isMember(t) && (resource.data.by == request.auth.uid || isOwner(t));
+      }
+
+      // 已付的轉帳
+      match /settles/{s} {
+        allow read: if isMember(t);
+        allow create: if isMember(t) && request.resource.data.by == request.auth.uid;
+        allow delete: if isMember(t) && (resource.data.by == request.auth.uid || isOwner(t));
+      }
+
+      // 餐廳：成員推薦（先進待收錄），只有主辦人能收錄／婉拒
+      match /restos/{r} {
+        allow read: if isMember(t);
+        allow create: if isMember(t)
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.status == 'pending';
+        allow update: if isOwner(t);
+        allow delete: if isOwner(t)
+          || (isMember(t) && resource.data.by == request.auth.uid && resource.data.status == 'pending');
+      }
+    }
+  }
+}
