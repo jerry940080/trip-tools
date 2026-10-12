@@ -1,7 +1,17 @@
 // 旅行記帳・餐廳（測試版）主程式
 // 網址加 ?mock=1 走模擬模式（不連 Firebase）；正式走 fb.js。
-const MOCK = new URLSearchParams(location.search).has('mock');
-const api = (await import(MOCK ? './mock.js' : './fb.js')).default;
+const QS = new URLSearchParams(location.search);
+const MOCK = QS.has('mock');
+// ?embed=行程ID：嵌在行程網站裡（iframe）。不顯示測試橫條、分頁移到上方、鎖在這一趟（沒有「我的行程」）
+const EMBED = QS.get('embed') || '';
+if (EMBED) document.documentElement.classList.add('embed');
+const HOME = EMBED ? '#/t/' + encodeURIComponent(EMBED) + '/exp' : '#/';
+let api;
+try { api = (await import(MOCK ? './mock.js' : './fb.js')).default; }
+catch (e) {   // 連不到 Firebase（沒網路、被擋）：不要停在「載入中…」
+  document.getElementById('app').innerHTML = `<div class="hero"><div style="font-size:40px">📡</div><h1 class="cap">連不上記帳伺服器</h1><p>請確認網路連線後重新整理。</p><button class="btn s" onclick="location.reload()">重新整理</button></div>`;
+  throw e;
+}
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -79,18 +89,19 @@ function openTrip(id) {
 
 /* ───────── 畫面 ───────── */
 const app = () => $('#app');
-const testBar = () => `<div class="test">測試版${MOCK ? '（模擬資料）' : ''}・不影響正式行程網站</div>`;
+const testBar = () => EMBED ? '' : `<div class="test">測試版${MOCK ? '（模擬資料）' : ''}・不影響正式行程網站</div>`;
 function tabs(on) {
-  const T = [['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['resto', '🍽', '餐廳'], ['mem', '👥', '成員']];
+  const T = [['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['resto', '🍽', EMBED ? '推薦' : '餐廳'], ['mem', '👥', '成員']];
   return `<nav class="tabs">${T.map(([k, i, t]) => `<a href="#/t/${encodeURIComponent(cur.id)}/${k}" class="${k === on ? 'on' : ''}"><i>${i}</i>${t}</a>`).join('')}</nav>`;
 }
 function head(title) {
   const t = cur.trip;
-  return `<div class="top"><div><div class="t"><a href="#/" style="text-decoration:none">‹ 我的行程</a>　${esc(t.title)}　${t.start ? fmtD(t.start) + '–' + fmtD(t.end) : ''}</div><h1 class="cap">${title}</h1></div>${ava(me.uid, 32)}</div>`;
+  return `<div class="top"><div><div class="t">${EMBED ? '' : '<a href="#/" style="text-decoration:none">‹ 我的行程</a>　'}${esc(t.title)}　${t.start ? fmtD(t.start) + '–' + fmtD(t.end) : ''}</div><h1 class="cap">${title}</h1></div>${ava(me.uid, 32)}</div>`;
 }
 
 function show() {
   if (me === undefined) return;
+  if (route.page === 'home' && EMBED) return go(HOME);
   if (route.page === 'home') { closeTrip(); return renderHome(); }
   if (route.page === 'join') { closeTrip(); return renderJoin(); }
   if (!me) { closeTrip(); return renderLogin('登入後才能看這趟的記帳與餐廳'); }
@@ -98,9 +109,9 @@ function show() {
 }
 function render() {
   if (!cur) return;
-  if (cur.err) return app().innerHTML = testBar() + `<div class="hero"><div style="font-size:40px">🔒</div><h1 class="cap">進不去這趟</h1><p>${esc(errMsg(cur.err))}。<br>請向主辦人要一個新的邀請連結。</p><a class="btn s" href="#/">回我的行程</a></div>`;
+  if (cur.err) return app().innerHTML = testBar() + `<div class="hero"><div style="font-size:40px">🔒</div><h1 class="cap">進不去這趟</h1><p>${esc(errMsg(cur.err))}。<br>請向主辦人要一個新的邀請連結。</p>${EMBED ? '' : '<a class="btn s" href="#/">回我的行程</a>'}</div>`;
   if (!cur.loaded) return app().innerHTML = testBar() + '<div class="hero"><p>讀取中…</p></div>';
-  if (!cur.trip) return app().innerHTML = testBar() + `<div class="hero"><h1 class="cap">找不到這趟</h1><p>可能還沒建立。</p><a class="btn s" href="#/">回我的行程</a></div>`;
+  if (!cur.trip) return app().innerHTML = testBar() + `<div class="hero"><h1 class="cap">找不到這趟</h1><p>可能還沒建立。</p>${EMBED ? '' : '<a class="btn s" href="#/">回我的行程</a>'}</div>`;
   const p = route.page;
   app().innerHTML = testBar() + ({ exp: pExp, settle: pSettle, resto: pResto, mem: pMem }[p] || pExp)() + tabs(p);
   if (route.add && p === 'resto') { route.add = false; history.replaceState(null, '', location.pathname + location.search + '#/t/' + encodeURIComponent(cur.id) + '/resto'); RF = null; openResto(); }
@@ -110,8 +121,8 @@ function render() {
 const INAPP = /\bLine\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent);
 const inappTip = () => INAPP ? `<div class="card" style="text-align:left;background:#fde3cf;margin:14px 0 0"><b>請改用 Safari 或 Chrome 開啟</b><div class="small" style="color:var(--ink)">Google 不允許在 LINE 裡面登入。請按右上角「⋯」或右下角的指南針圖示，選「用預設瀏覽器開啟」，或複製網址貼到 Safari／Chrome。</div><button class="btn s" data-act="copy" data-u="${esc(location.href)}">複製這個網址</button></div>` : '';
 function renderLogin(msg) {
-  app().innerHTML = testBar() + `<div class="hero"><div style="font-size:44px">🧳</div><h1 class="cap">旅行記帳・餐廳</h1><p>${esc(msg || '和同行的人一起記帳、分帳、推薦餐廳。')}<br>行程內容不用登入也能在行程網站看。</p>
-  ${inappTip()}<button class="btn g" data-act="login">用 Google 帳號登入</button></div>`;
+  app().innerHTML = testBar() + `<div class="hero"><div style="font-size:44px">🧳</div><h1 class="cap">旅行記帳・餐廳</h1><p>${esc(msg || '和同行的人一起記帳、分帳、推薦餐廳。')}${EMBED ? '<br>只有這趟同行的人看得到。' : '<br>行程內容不用登入也能在行程網站看。'}</p>
+  ${inappTip()}<button class="btn g" data-act="login">用 Google 帳號登入</button>${EMBED ? `<p class="small" style="margin-top:14px">按了沒反應？<a class="lnk" href="${esc(BASE + location.hash)}" target="_blank" rel="noopener">改在新視窗打開記帳</a></p>` : ''}</div>`;
 }
 /* 首頁：我的行程 */
 async function renderHome() {
@@ -332,7 +343,7 @@ document.addEventListener('click', async ev => {
   const a = el.dataset.act;
   try {
     if (a === 'login') { try { return await api.signIn(); } catch (e) { if (e && e.code === 'auth/popup-closed-by-user') return; return toast(e && e.code === 'auth/popup-blocked' ? '登入視窗被瀏覽器擋住了，請允許彈出視窗後再按一次' : e && e.code === 'auth/unauthorized-domain' ? '這個網址還沒加進 Firebase 已授權的網域' : '登入失敗：' + (e && (e.code || e.message))); } }
-    if (a === 'logout') { await api.signOut(); return go('#/'); }
+    if (a === 'logout') { await api.signOut(); return go(HOME); }
     if (a === 'create') {
       const repo = el.dataset.repo, m = await tripMeta(repo); if (!m) return toast('讀不到這趟的 trip.json');
       const ex = await api.getTrip(repo).catch(e => 'deny');   // 別人建的、自己不是成員 → 讀不到

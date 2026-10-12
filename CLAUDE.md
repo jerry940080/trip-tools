@@ -41,6 +41,12 @@ trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending
   權限、餐廳推薦／收錄／改日期／婉拒、移除成員、手機與桌機無溢出）。本機用 `python3 -m http.server` 從上一層目錄起，`/<repo>/trip.json` 才讀得到。
 - 開發環境連不到 gstatic／Firebase，**真正的登入與資料庫只能由使用者上線後測**。
 
+## 嵌入模式（2026-10-12）
+`?embed=行程ID`：給行程網站用 iframe 嵌入（IzuAtami-trip 的「資訊 › 記帳」與電腦版 `#acct`）。`<html class="embed">`：
+不顯示測試橫條、分頁移到上方當分段（餐廳分頁改叫「推薦」，避免和行程網站的「餐廳」撞名）、沒有「我的行程」（`#/` 一律導回這趟）、
+登出回這趟、登入頁多「改在新視窗打開記帳」。`fb.js` 載入失敗（沒網路、被擋）顯示「連不上記帳伺服器」而不是一直「載入中…」。
+其他行程網站要嵌入，照 IzuAtami-trip CLAUDE.md 變更（四十）做。
+
 ## localStorage
 `tt-mock`、`tt-mock-me`（只有模擬模式）。Firebase 自己用 IndexedDB 存離線快取。同網域其他網站用 `izu-`、`hub-` 等前綴，不衝突。
 
