@@ -7,7 +7,9 @@ GitHub Pages 靜態網站＋Firebase（Spark 免費方案，專案 `trip-tools-2
 - **記帳**：日幣／台幣，每趟一個匯率（1 台幣＝N 日圓，預設 4.8，成員都能改）；誰付＋哪幾個人分；
   分法 平均／比例（份數）／指定金額（加總要等於金額）／有人請客（只算在付款人身上）。
 - **結算**：全部換台幣算每人結餘（先付−應分），貪婪法算最少轉帳；按「已付」記一筆 `settles`，結餘跟著抵掉；可匯出 CSV。
-- **餐廳**：成員貼 Google 地圖連結推薦 → 待收錄 → 主辦人收錄（確認排哪天哪餐）或婉拒。正式名單**還沒接到行程網站的餐廳頁**（之後的工作）。
+- **餐廳**：成員貼 Google 地圖連結推薦 → 待收錄 → 主辦人收錄（確認排哪天、哪餐；餐別必填）或婉拒。
+  **2026-10-12 起已接到行程網站**：IzuAtami-trip 的餐廳頁用 Firestore REST 讀 `status=='in'` 的店，標「家人推薦」；
+  行程網站的「＋ 新增餐廳」開 `#/t/IzuAtami-trip/resto/add`（這個路由會直接打開推薦表單，再把網址收回 `/resto`）。
 - **成員**：主辦人產生邀請連結（20 碼亂數、7 天有效、重新產生即作廢舊的），家人點開用 Google 登入就加入；主辦人可移除成員。
 
 ## 使用者確認過的需求（別改回去）
@@ -27,6 +29,7 @@ trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending
 ```
 - 建立行程時從 `/<repo>/trip.json`（同網域）讀標題、日期、顏色、封面；可建立的清單是 `app.js` 的 `KNOWN`。
 - 邀請驗證在 `firestore.rules` 裡做：members 建立時 `key` 要等於 `private/invite.key` 且 `request.time < expires`。
+- `restos` 在 `status=='in'` 時免登入可讀（給行程網站用；公開的欄位：店名、網址、座標、日期、餐別、備註、推薦人名字與 uid）。
 - `trips/{id}` 的 `get` 允許 `resource == null`，否則查「這趟建了沒」會被當成沒權限。
 
 ## 程式
@@ -34,7 +37,7 @@ trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending
   **改權限規則時 `mock.js` 要一起改**，模擬測試才有意義。
 - 寫入（記帳、已付、收錄）用 `bg()` 不等伺服器：Firestore 離線快取下 `await addDoc` 會等到連上網才 resolve，旅途沒網路時表單會卡住。
 - 路由：`#/` 我的行程、`#/t/ID/exp|settle|resto|mem`、`#/join/ID/KEY`。
-- 驗證腳本在 IzuAtami-trip 對話的 scratchpad：`tt/t1.js`（模擬模式全流程 50 項：建立、邀請對錯與過期、四種分法、結算與已付、
+- 驗證腳本在 IzuAtami-trip 對話的 scratchpad：`tt/t1.js`（模擬模式全流程 53 項：建立、邀請對錯與過期、四種分法、結算與已付、
   權限、餐廳推薦／收錄／改日期／婉拒、移除成員、手機與桌機無溢出）。本機用 `python3 -m http.server` 從上一層目錄起，`/<repo>/trip.json` 才讀得到。
 - 開發環境連不到 gstatic／Firebase，**真正的登入與資料庫只能由使用者上線後測**。
 
@@ -44,5 +47,5 @@ trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending
 ## 待辦
 1. 使用者已完成 Pages、規則、授權網域三步驟（2026-10-07），待實測登入。
    邀請連結帶 `?openExternalBrowser=1`（LINE 會改用預設瀏覽器開）；LINE／FB／IG 內建瀏覽器另顯示「請改用 Safari 或 Chrome」提示，因為 Google 不准在內建瀏覽器登入（403 disallowed_useragent）。
-2. 正式名單接到行程網站的餐廳頁（行程網站讀 Firestore `status=='in'` 的公開資料；規則要另外開放）。
+2. （已完成 2026-10-12）正式名單接到行程網站的餐廳頁。其他行程網站要接的話，照 IzuAtami-trip CLAUDE.md 變更（三十九）做。
 3. 記帳可考慮：照片收據、依類別統計、更多幣別。

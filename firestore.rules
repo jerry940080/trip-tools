@@ -67,8 +67,9 @@ service cloud.firestore {
       }
 
       // 餐廳：成員推薦（先進待收錄），只有主辦人能收錄／婉拒
+      // 已收錄的店不用登入也讀得到：行程網站的「餐廳」頁會列出來（只有店名、日期、推薦人名字、備註）
       match /restos/{r} {
-        allow read: if isMember(t);
+        allow read: if resource.data.status == 'in' || isMember(t);
         allow create: if isMember(t)
           && request.resource.data.by == request.auth.uid
           && request.resource.data.status == 'pending';

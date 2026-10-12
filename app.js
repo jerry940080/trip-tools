@@ -59,7 +59,7 @@ function calc() {
 /* ───────── 路由 ───────── */
 function parse() {
   const h = location.hash.replace(/^#\/?/, '').split('/');
-  if (h[0] === 't' && h[1]) return { page: h[2] || 'exp', id: decodeURIComponent(h[1]) };
+  if (h[0] === 't' && h[1]) return { page: h[2] || 'exp', id: decodeURIComponent(h[1]), add: h[3] === 'add' };   // …/resto/add：行程網站的「＋ 新增餐廳」直接開推薦表單
   if (h[0] === 'join' && h[1]) return { page: 'join', id: decodeURIComponent(h[1]), key: h[2] || '' };
   return { page: 'home' };
 }
@@ -103,6 +103,7 @@ function render() {
   if (!cur.trip) return app().innerHTML = testBar() + `<div class="hero"><h1 class="cap">找不到這趟</h1><p>可能還沒建立。</p><a class="btn s" href="#/">回我的行程</a></div>`;
   const p = route.page;
   app().innerHTML = testBar() + ({ exp: pExp, settle: pSettle, resto: pResto, mem: pMem }[p] || pExp)() + tabs(p);
+  if (route.add && p === 'resto') { route.add = false; history.replaceState(null, '', location.pathname + location.search + '#/t/' + encodeURIComponent(cur.id) + '/resto'); RF = null; openResto(); }
 }
 
 /* 登入：Google 不准在 LINE／FB／IG 內建瀏覽器登入，先提示改用 Safari／Chrome */
@@ -261,7 +262,7 @@ function pResto() {
   const cnt = s => R.filter(r => r.status === s).length;
   const tabsR = [['in', '正式名單'], ['pending', '待收錄'], ['no', '已婉拒']];
   let h = head('餐廳') + `<div class="seg">${tabsR.map(([k, t]) => `<button data-act="rtab" data-k="${k}" class="${RTAB === k ? 'on' : ''}">${t} ${cnt(k)}</button>`).join('')}</div>`;
-  h += `<div class="small" style="margin:0 20px 8px">${own ? '家人推薦的店先放在「待收錄」，你按「收錄」才進正式名單。（測試版：正式名單之後再接到行程網站的餐廳頁）' : '你推薦的店會先進「待收錄」，等主辦人收錄。'}</div>`;
+  h += `<div class="small" style="margin:0 20px 8px">${own ? '家人推薦的店先放在「待收錄」，你按「收錄」才進正式名單，並出現在行程網站的「餐廳」頁。' : '你推薦的店會先進「待收錄」，等主辦人收錄。'}</div>`;
   const L = R.filter(r => r.status === RTAB).sort((a, b) => (a.day || '9').localeCompare(b.day || '9') || (b.at || 0) - (a.at || 0));
   if (!L.length) h += `<div class="empty">${RTAB === 'pending' ? '目前沒有待收錄的店。按「＋ 推薦一家」貼 Google 地圖連結。' : '這裡還沒有店。'}</div>`;
   for (const r of L) {
@@ -295,7 +296,8 @@ function openPlace(id) {   // 主辦人收錄：確認排在哪天哪餐
   $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">${r.status === 'in' ? '改日期' : '收錄'}：${esc(r.name)}</b><button class="small" data-act="close">取消</button></div>
   <div class="small" style="margin-top:6px">${esc(mInfo(r.by).name)} 推薦${r.note ? '：' + esc(r.note) : ''}</div>
   <div class="row2"><div><div class="lab">排進哪一天</div><select class="inp" id="pDay"><option value="">未定</option>${D.map(d => `<option value="${d}" ${r.day === d ? 'selected' : ''}>${fmtD(d)}（${wd(d)}）</option>`).join('')}</select></div>
-  <div><div class="lab">哪一餐</div><select class="inp" id="pMeal"><option value="">未定</option>${MEALS.map(m => `<option ${r.meal === m ? 'selected' : ''}>${m}</option>`).join('')}</select></div></div>
+  <div><div class="lab">哪一餐</div><select class="inp" id="pMeal">${MEALS.map(m => `<option ${(r.meal || '晚餐') === m ? 'selected' : ''}>${m}</option>`).join('')}</select></div></div>
+  <div class="small" style="margin-top:8px">收錄後會出現在行程網站的「餐廳」頁，標「家人推薦」。</div>
   <button class="btn" data-act="rinok" data-id="${esc(id)}">${r.status === 'in' ? '存檔' : '收錄進正式名單'}</button>`;
   $('#dim').hidden = false;
 }
