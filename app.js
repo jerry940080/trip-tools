@@ -91,10 +91,10 @@ function openTrip(id) {
 /* ───────── 畫面 ───────── */
 const app = () => $('#app');
 const testBar = () => EMBED ? '' : `<div class="test">測試版${MOCK ? '（模擬資料）' : ''}・不影響正式行程網站</div>`;
-// 嵌在行程網站時：預算（花費）與推薦（餐廳）各自是一整頁、不顯示分頁列；記帳只留 記帳／結算／成員
+// 嵌在行程網站時：推薦（餐廳頁裡）是一整頁、不顯示分頁列；行程網站的「記帳」分頁裡是 花費／記帳／結算／成員
 function tabs(on) {
-  if (EMBED && (on === 'budget' || on === 'resto')) return '';
-  const T = EMBED ? [['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['mem', '👥', '成員']]
+  if (EMBED && on === 'resto') return '';
+  const T = EMBED ? [['budget', '📋', '花費'], ['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['mem', '👥', '成員']]
     : [['budget', '📋', '預算'], ['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['resto', '🍽', '餐廳'], ['mem', '👥', '成員']];
   return `<nav class="tabs">${T.map(([k, i, t]) => `<a href="#/t/${encodeURIComponent(cur.id)}/${k}" class="${k === on ? 'on' : ''}"><i>${i}</i>${t}</a>`).join('')}</nav>`;
 }
