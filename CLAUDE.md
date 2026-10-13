@@ -85,6 +85,14 @@ trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending
 - 嵌入時推薦頁標題叫「家人推薦・收錄」。行程網站：資訊›花費＝`budget`、資訊›記帳＝`exp`（同一個 iframe 換 hash）、
   餐廳頁的「家人推薦」分段＝另一個 iframe 開 `resto`，「＋ 新增餐廳」開 `resto/add`。
 
+## 電腦版寬版（`&wide=1`，2026-10-13）
+行程網站電腦版「花費・記帳」使用者選了 A「全寬兩欄＋上方分頁」。只有 `?embed=…&wide=1` 才生效（`WIDE`、`html.wide`），手機嵌入與獨立網站完全不變。
+- **分頁列不畫**（`tabs()` 回空字串），分頁按鈕在行程網站那邊（花費／記帳／結算／成員），按了改 iframe 的 hash；iframe 內換頁時行程網站會跟著亮。`head()` 的標題列也藏起來。
+- **兩欄** `cols(a,b,sw)`：手機照 a、b 上下排（和原本順序一樣）；wide 時 a 左 b 右，`sw` 把 a 放右邊並 sticky。
+  花費＝左〔同行人數、每人摘要、分類長條、每人每晚〕右〔「明細＋新增項目」標題列、分組卡〕；記帳＝左列表、右〔總額與每人餘額、記一筆按鈕〕（`sw`）；結算＝左〔匯率、轉帳、已付〕右〔每個人、CSV〕；成員＝左名單、右邀請連結與登入帳號。
+- wide 沒有懸浮鈕（記一筆、新增項目改成欄內按鈕）；花費明細的分組**預設全部展開**（`bOpen()`，`BOPEN` 在 wide 時記的是「收起來」）；底部表單改成置中彈窗（`.dim{align-items:center}`、沒有拖曳把手）。
+- iframe 高度由行程網站算成「畫面剩下的高度」，整頁不捲、只在 iframe 裡捲，所以彈窗會在畫面中間。
+
 ## localStorage
 `tt-mock`、`tt-mock-me`（只有模擬模式）。Firebase 自己用 IndexedDB 存離線快取。同網域其他網站用 `izu-`、`hub-` 等前綴，不衝突。
 

@@ -140,6 +140,23 @@ button.br:active{background:var(--soft)}
 .ck{display:flex;align-items:center;gap:8px;font-size:14px;margin-top:10px}.ck input{width:18px;height:18px}
 html.embed .tabs a{font-size:12.5px;gap:3px;padding:7px 2px}
 html.embed .tabs{grid-template-columns:repeat(4,1fr)}
+/* 電腦版行程網站（?embed=…&wide=1）：沒有分頁列（行程網站自己畫），內容左右兩欄、各自捲動不跟著整頁跑 */
+html.wide #app{max-width:none;padding:0 0 24px;display:block;min-height:0}
+html.wide .top{display:none}
+.cols{display:block}
+html.wide .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start;padding:0 4px}
+html.wide .cols.sw>.cA{grid-column:2;grid-row:1;position:sticky;top:12px}html.wide .cols.sw>.cB{grid-column:1;grid-row:1}
+html.wide .cols>div>*{margin-left:0;margin-right:0}html.wide .cols .it{width:100%}
+html.wide .cols .day{margin-left:4px;margin-right:4px}html.wide .cols .day:first-child{margin-top:4px}
+html.wide .rate{margin:0 4px 14px}
+html.wide .sum .ppl{flex-wrap:wrap;overflow:visible}
+html.wide .wadd{margin:4px 0 10px}
+.whd{display:flex;align-items:baseline;gap:10px;margin:2px 4px 8px}.whd b{font-size:16px}.whd span{font-size:12px;color:var(--mute);flex:1}
+html.wide .dim{align-items:center;padding:20px}
+html.wide .sheet{border-radius:24px;max-height:min(760px,92vh);padding-bottom:22px}
+html.wide .grab{display:none}
+html.wide .hero{max-width:520px;margin:0 auto}
+html.wide .toast{top:16px}
 </style>
 </head>
 <body>

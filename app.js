@@ -5,6 +5,11 @@ const MOCK = QS.has('mock');
 // ?embed=行程ID：嵌在行程網站裡（iframe）。不顯示測試橫條、分頁移到上方、鎖在這一趟（沒有「我的行程」）
 const EMBED = QS.get('embed') || '';
 if (EMBED) document.documentElement.classList.add('embed');
+// &wide=1：電腦版行程網站用。分頁列交給行程網站畫（不顯示），內容拆成左右兩欄（cols()），表單改成置中彈窗
+const WIDE = !!EMBED && QS.get('wide') === '1';
+if (WIDE) document.documentElement.classList.add('wide');
+// 兩欄：手機照原本順序上下排；wide 時 a 在左、b 在右（sw＝a 放右邊，例如記帳把總額放右）
+const cols = (a, b, sw) => `<div class="cols${sw ? ' sw' : ''}"><div class="cA">${a}</div><div class="cB">${b}</div></div>`;
 const HOME = EMBED ? '#/t/' + encodeURIComponent(EMBED) + '/exp' : '#/';
 let api;
 try { api = (await import(MOCK ? './mock.js' : './fb.js')).default; }
@@ -93,7 +98,7 @@ const app = () => $('#app');
 const testBar = () => EMBED ? '' : `<div class="test">測試版${MOCK ? '（模擬資料）' : ''}・不影響正式行程網站</div>`;
 // 嵌在行程網站時：推薦（餐廳頁裡）是一整頁、不顯示分頁列；行程網站的「記帳」分頁裡是 花費／記帳／結算／成員
 function tabs(on) {
-  if (EMBED && on === 'resto') return '';
+  if (EMBED && on === 'resto' || WIDE) return '';
   const T = EMBED ? [['budget', '📋', '花費'], ['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['mem', '👥', '成員']]
     : [['budget', '📋', '預算'], ['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['resto', '🍽', '餐廳'], ['mem', '👥', '成員']];
   return `<nav class="tabs">${T.map(([k, i, t]) => `<a href="#/t/${encodeURIComponent(cur.id)}/${k}" class="${k === on ? 'on' : ''}"><i>${i}</i>${t}</a>`).join('')}</nav>`;
@@ -157,18 +162,21 @@ function pExp() {
   const c = calc(); const L = memberList();
   const ex = (cur.expenses || []).slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.at || 0) - (a.at || 0));
   const mine = c.bal[me.uid] || 0;
-  let h = head('花費記帳');
-  h += `<div class="sum"><div style="display:flex;justify-content:space-between;gap:10px"><div><div class="k">這趟總花費（換算台幣）</div><div class="v">${nt(c.total)}</div></div><div style="text-align:right"><div class="k">我目前</div><div class="v ${mine >= 0 ? 'pos' : 'neg'}">${Math.abs(mine) < 1 ? '兩清' : (mine > 0 ? '應收 ' : '應付 ') + nt(Math.abs(mine))}</div></div></div>
+  let h = head('花費記帳'), top = '';
+  top += `<div class="sum"><div style="display:flex;justify-content:space-between;gap:10px"><div><div class="k">這趟總花費（換算台幣）</div><div class="v">${nt(c.total)}</div></div><div style="text-align:right"><div class="k">我目前</div><div class="v ${mine >= 0 ? 'pos' : 'neg'}">${Math.abs(mine) < 1 ? '兩清' : (mine > 0 ? '應收 ' : '應付 ') + nt(Math.abs(mine))}</div></div></div>
     <div class="ppl">${L.map(m => { const b = c.bal[m.uid] || 0; return `<div class="pp">${ava(m.uid, 26)}<div><div class="n">${esc(m.name)}</div><div class="b ${b >= 0 ? 'pos' : 'neg'}">${Math.abs(b) < 1 ? '兩清' : (b > 0 ? '+' : '−') + Math.round(Math.abs(b)).toLocaleString()}</div></div></div>`; }).join('')}</div></div>`;
-  if (!ex.length) h += `<div class="empty">還沒有任何一筆。<br>按右下角「＋ 記一筆」開始。</div>`;
+  if (WIDE) top += `<button class="btn wadd" data-act="add">＋ 記一筆</button>`;
+  let lst = '';
+  if (!ex.length) lst += `<div class="empty">還沒有任何一筆。<br>按${WIDE ? '右邊' : '右下角'}「＋ 記一筆」開始。</div>`;
   let last = '';
   for (const e of ex) {
-    if (e.date !== last) { last = e.date; const dt = ex.filter(x => x.date === e.date).reduce((a, x) => a + c.toNT(+x.amount, x.cur), 0); h += `<div class="day"><span>${fmtD(e.date)}（${wd(e.date)}）</span><span>${nt(dt)}</span></div>`; }
+    if (e.date !== last) { last = e.date; const dt = ex.filter(x => x.date === e.date).reduce((a, x) => a + c.toNT(+x.amount, x.cur), 0); lst += `<div class="day"><span>${fmtD(e.date)}（${wd(e.date)}）</span><span>${nt(dt)}</span></div>`; }
     const n = Object.keys(e.shares || {}).length;
     const tag = e.mode === 'treat' ? `${mInfo(e.payer).name}請客` : e.mode === 'ratio' ? '比例' : e.mode === 'amount' ? '指定金額' : '';
-    h += `<button class="it" data-act="edit" data-id="${esc(e.id)}"><div class="ic">${esc(e.icon || '🧾')}</div><div><div class="n">${esc(e.title)}${tag ? `<span class="tag">${esc(tag)}</span>` : ''}</div><div class="m">${eDates(e).length > 1 ? `<span class="rg">${esc(dTxt(eDates(e), false))}</span>` : ''}${esc(mInfo(e.payer).name)} 付・${e.mode === 'treat' ? '不分攤' : n + ' 人分'}</div></div><div class="a">${money(+e.amount, e.cur)}${e.cur !== 'TWD' ? `<small>≈ ${nt(c.toNT(+e.amount, e.cur))}</small>` : ''}</div></button>`;
+    lst += `<button class="it" data-act="edit" data-id="${esc(e.id)}"><div class="ic">${esc(e.icon || '🧾')}</div><div><div class="n">${esc(e.title)}${tag ? `<span class="tag">${esc(tag)}</span>` : ''}</div><div class="m">${eDates(e).length > 1 ? `<span class="rg">${esc(dTxt(eDates(e), false))}</span>` : ''}${esc(mInfo(e.payer).name)} 付・${e.mode === 'treat' ? '不分攤' : n + ' 人分'}</div></div><div class="a">${money(+e.amount, e.cur)}${e.cur !== 'TWD' ? `<small>≈ ${nt(c.toNT(+e.amount, e.cur))}</small>` : ''}</div></button>`;
   }
-  h += `<button class="fab" data-act="add">＋ 記一筆</button>`;
+  h += cols(top, lst, true);
+  if (!WIDE) h += `<button class="fab" data-act="add">＋ 記一筆</button>`;
   return h;
 }
 
@@ -272,15 +280,15 @@ function closeSheet() { closeCal(); $('#dim').hidden = true; F = null; RF = null
 /* 結算 */
 function pSettle() {
   const c = calc(), L = memberList();
-  let h = head('結算');
-  h += `<div class="rate"><span>匯率　1 台幣 ＝ <input id="rate" inputmode="decimal" value="${esc(c.rate)}"> 日圓</span><button class="lnk" data-act="rate">更新</button></div>`;
-  h += `<div class="card"><div style="font-weight:800;margin-bottom:4px">${c.tr.length ? `還要轉帳 ${c.tr.length} 筆` : '目前兩清，不用轉帳 🎉'}</div><div class="small">已把互相欠的錢抵掉，算出最少的轉帳次數。付完按「已付」，會記成一筆轉帳。</div>
+  let h = head('結算'), A = '', B = '';
+  A += `<div class="rate"><span>匯率　1 台幣 ＝ <input id="rate" inputmode="decimal" value="${esc(c.rate)}"> 日圓</span><button class="lnk" data-act="rate">更新</button></div>`;
+  A += `<div class="card"><div style="font-weight:800;margin-bottom:4px">${c.tr.length ? `還要轉帳 ${c.tr.length} 筆` : '目前兩清，不用轉帳 🎉'}</div><div class="small">已把互相欠的錢抵掉，算出最少的轉帳次數。付完按「已付」，會記成一筆轉帳。</div>
     ${c.tr.map(t => `<div class="tr">${ava(t.from)}<span class="arr">→</span>${ava(t.to)}<div class="v">${nt(t.amount)}<div class="small" style="font-weight:400">≈ ${yen(t.amount * c.rate)}</div></div><button class="sbtn" data-act="paid" data-f="${esc(t.from)}" data-t="${esc(t.to)}" data-a="${Math.round(t.amount)}">已付</button></div>`).join('')}</div>`;
   const S = (cur.settles || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0));
-  if (S.length) h += `<div class="day"><span>已付的轉帳</span></div><div class="card">${S.map(s => `<div class="tr">${ava(s.from)}<span class="arr">→</span>${ava(s.to)}<div class="v">${nt(s.amount)}</div><button class="small" data-act="unpaid" data-id="${esc(s.id)}">取消</button></div>`).join('')}</div>`;
-  h += `<div class="day"><span>每個人</span></div><div class="card">${L.map(m => { const b = c.bal[m.uid] || 0; return `<div class="pc">${ava(m.uid)}<div><div class="n">${esc(m.name)}</div><div class="m">先付 ${nt(c.paid[m.uid] || 0)}・應分 ${nt(c.owe[m.uid] || 0)}</div></div><div class="bal ${b >= 0 ? 'posd' : 'negd'}">${Math.abs(b) < 1 ? '兩清' : (b > 0 ? '+' : '−') + Math.round(Math.abs(b)).toLocaleString()}</div></div>`; }).join('')}</div>`;
-  h += `<div class="small" style="margin:6px 20px">「有人請客」的帳只算在請客的人身上。<button class="lnk" data-act="csv">匯出表格（CSV）</button></div>`;
-  return h;
+  if (S.length) A += `<div class="day"><span>已付的轉帳</span></div><div class="card">${S.map(s => `<div class="tr">${ava(s.from)}<span class="arr">→</span>${ava(s.to)}<div class="v">${nt(s.amount)}</div><button class="small" data-act="unpaid" data-id="${esc(s.id)}">取消</button></div>`).join('')}</div>`;
+  B += `<div class="day"><span>每個人</span></div><div class="card">${L.map(m => { const b = c.bal[m.uid] || 0; return `<div class="pc">${ava(m.uid)}<div><div class="n">${esc(m.name)}</div><div class="m">先付 ${nt(c.paid[m.uid] || 0)}・應分 ${nt(c.owe[m.uid] || 0)}</div></div><div class="bal ${b >= 0 ? 'posd' : 'negd'}">${Math.abs(b) < 1 ? '兩清' : (b > 0 ? '+' : '−') + Math.round(Math.abs(b)).toLocaleString()}</div></div>`; }).join('')}</div>`;
+  B += `<div class="small" style="margin:6px 20px">「有人請客」的帳只算在請客的人身上。<button class="lnk" data-act="csv">匯出表格（CSV）</button></div>`;
+  return h + cols(A, B);
 }
 function csv() {
   const c = calc(); const q = s => '"' + String(s).replace(/"/g, '""') + '"';
@@ -313,7 +321,8 @@ function bSum(list) { const per = { NT: 0, JPY: 0 }, all = { NT: 0, JPY: 0 }; le
 function bTxt(o) { const t = []; if (o.NT) t.push(nt(o.NT)); if (o.JPY) t.push(yen(o.JPY)); return t.join(' ＋ ') || '—'; }
 const BICO = { 機票: '✈️', 住宿: '🛏', 交通: '🚆', '門票・體驗': '🎟', 餐飲: '🍜', 其他: '📦', 選項: '✨' };
 const BCOL = ['#2b4c7e', '#c67139', '#56633f', '#b2622d', '#8a3f5c', '#7a8a5e', '#3f6fa8'];
-const BOPEN = {};   // 明細展開的分組（只存在這次開啟）
+const BOPEN = {};   // 明細展開的分組（只存在這次開啟）；wide（電腦版）預設全部展開，所以存的是「收起來」
+const bOpen = g => WIDE ? !BOPEN[g] : !!BOPEN[g];
 // 每人每晚長條：住宿項目依名稱的起始日期攤成一晚一根；讀不到日期的排在後面
 function bNightBars(L, rate) {
   const toNT = (v, c) => c === 'NT' ? v : v / rate, bars = [], hotels = [];
@@ -331,43 +340,47 @@ function pBudget() {
   const own = isOwner(), L = (cur.budget || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)), n = pplOf(), rate = +cur.trip.rate || 4.8;
   let h = head('花費預算');
   if (cur.bErr) return h + `<div class="empty">預算還讀不到。<br>${own ? '請到 Firebase 主控台把最新的 firestore.rules 貼上並發布（多了「預算」的權限）。' : '主辦人還在設定，晚點再來看。'}</div>`;
-  h += `<div class="rate"><span>同行人數</span>${own ? `<span class="ppl"><button data-act="ppl" data-d="-1">−</button><b>${n} 人</b><button data-act="ppl" data-d="1">＋</button></span>` : `<b>${n} 人</b>`}</div>`;
-  if (!L.length) return h + (own ? `<div class="empty">還沒有預算項目。<br><button class="btn" data-act="bimport" id="bimp" hidden>匯入行程網站原本的預估</button><button class="btn s" data-act="badd">＋ 自己新增一項</button></div>` : `<div class="empty">主辦人還沒填預算。</div>`) + (own ? (setTimeout(bSeedCheck, 0), '') : '');
+  const rateH = `<div class="rate"><span>同行人數</span>${own ? `<span class="ppl"><button data-act="ppl" data-d="-1">−</button><b>${n} 人</b><button data-act="ppl" data-d="1">＋</button></span>` : `<b>${n} 人</b>`}</div>`;
+  if (!WIDE) h += rateH;
+  if (!L.length) return h + (WIDE ? rateH : '') + (own ? `<div class="empty">還沒有預算項目。<br><button class="btn" data-act="bimport" id="bimp" hidden>匯入行程網站原本的預估</button><button class="btn s" data-act="badd">＋ 自己新增一項</button></div>` : `<div class="empty">主辦人還沒填預算。</div>`) + (own ? (setTimeout(bSeedCheck, 0), '') : '');
   const toNT = o => o.NT + o.JPY / rate, S = bSum(L.filter(x => !x.opt));
-  h += `<div class="sum bsum"><div class="k">每人大約要準備</div><div class="v">${nt(toNT(S.per))}</div>
+  let A = WIDE ? rateH : '', B = '';
+  A += `<div class="sum bsum"><div class="k">每人大約要準備</div><div class="v">${nt(toNT(S.per))}</div>
     <div class="k" style="margin-top:3px">全體 ${n} 人 約 ${nt(toNT(S.all))}${S.u ? `・另有 ${S.u} 項金額未知` : ''}</div></div>`;
   const groups = BG.concat([...new Set(L.map(x => x.g))].filter(g => !BG.includes(g))).filter(g => L.some(x => x.g === g));
   // 各類每人花費長條（台幣）
   const gs = groups.filter(g => g !== '選項').map((g, i) => ({ g, v: toNT(bSum(L.filter(x => x.g === g && !x.opt)).per), c: BCOL[i % BCOL.length] }));
   const mx = Math.max(1, ...gs.map(x => x.v));
-  h += `<div class="bbars">${gs.map(x => `<div class="bb"><b>${esc(x.g)}</b><div class="t"><i style="width:${Math.max(x.v ? 3 : 0, x.v / mx * 100).toFixed(1)}%;background:${x.c}"></i></div><span>${x.v ? Math.round(x.v).toLocaleString('en-US') : '—'}</span></div>`).join('')}
+  A += `<div class="bbars">${gs.map(x => `<div class="bb"><b>${esc(x.g)}</b><div class="t"><i style="width:${Math.max(x.v ? 3 : 0, x.v / mx * 100).toFixed(1)}%;background:${x.c}"></i></div><span>${x.v ? Math.round(x.v).toLocaleString('en-US') : '—'}</span></div>`).join('')}
     <div class="bbn">每人・台幣（日圓 ÷ ${rate}）・選項不計入</div></div>`;
   // 每人每晚住宿
   const NB = bNightBars(L, rate);
   if (NB.bars.length) {
     const nmx = Math.max(...NB.bars.map(x => x.v)), avg = NB.bars.reduce((a, x) => a + x.v, 0) / NB.bars.length, col = l => BCOL[NB.hotels.indexOf(l) % BCOL.length];
     const top = NB.bars.reduce((a, x) => x.v > a.v ? x : a, NB.bars[0]);
-    h += `<div class="bnight"><b>每人每晚住宿</b><p>${NB.bars.length} 晚・平均 ${nt(avg)}／晚${NB.hotels.length > 1 ? `・最貴：${esc(top.lab)}` : ''}</p>
+    A += `<div class="bnight"><b>每人每晚住宿</b><p>${NB.bars.length} 晚・平均 ${nt(avg)}／晚${NB.hotels.length > 1 ? `・最貴：${esc(top.lab)}` : ''}</p>
       <div class="nc" style="grid-template-columns:repeat(${NB.bars.length},1fr)">${NB.bars.map(x => `<div><em>${Math.round(x.v).toLocaleString('en-US')}</em><i style="height:${Math.max(4, x.v / nmx * 92).toFixed(0)}px;background:${col(x.lab)}"></i><small>${x.m < 99 ? x.m + '/' + x.dd : ''}</small></div>`).join('')}</div>
       <div class="lg">${NB.hotels.map(l => `<span><i style="background:${col(l)}"></i>${esc(l)}</span>`).join('')}</div></div>`;
   }
+  if (WIDE && own) B += `<div class="whd"><b>明細</b><span>點分類展開・點項目可修改</span><button class="lnk" data-act="badd">＋ 新增項目</button></div>`;
   // 明細：每類一張卡，點開才列項目
   for (const g of groups) {
-    const G = L.filter(x => x.g === g), opt = g === '選項', s2 = bSum(G), on = !!BOPEN[g];
+    const G = L.filter(x => x.g === g), opt = g === '選項', s2 = bSum(G), on = bOpen(g);
     const sub = [`${G.length} 項`]; if (s2.u) sub.push(`${s2.u} 項未知`); if (opt) sub.push('去了才算・不計入');
     if (g === '住宿' && NB.bars.length) sub.push(`共 ${NB.bars.length} 晚`);
     const yenTxt = s2.per.JPY ? `<small>${s2.per.NT ? nt(s2.per.NT) + ' ＋ ' : ''}${yen(s2.per.JPY)}</small>` : '';
-    h += `<div class="bcard${opt ? ' opt' : ''}${on ? ' on' : ''}"><button class="bch" data-act="btog" data-g="${esc(g)}"><i>${BICO[g] || '•'}</i><div><b>${esc(g)}</b><small>${sub.join('・')}</small></div><div class="r">${toNT(s2.per) ? nt(toNT(s2.per)) : '—'}${yenTxt}</div><span class="ar">${on ? '⌄' : '›'}</span></button>`;
+    B += `<div class="bcard${opt ? ' opt' : ''}${on ? ' on' : ''}"><button class="bch" data-act="btog" data-g="${esc(g)}"><i>${BICO[g] || '•'}</i><div><b>${esc(g)}</b><small>${sub.join('・')}</small></div><div class="r">${toNT(s2.per) ? nt(toNT(s2.per)) : '—'}${yenTxt}</div><span class="ar">${on ? '⌄' : '›'}</span></button>`;
     if (on) for (const it of G) {
       const unk = it.amt == null || it.amt === '', free = +it.amt === 0 && !unk, ap = it.approx ? '約 ' : '', ni = bNights(it), nTxt = bNightTxt(it);
       const meta = [ni && g === '住宿' ? `${ni} 晚` : '', esc(it.note), unk || free ? '' : bHow(it)].filter(Boolean).join('・');
       const right = unk ? '<span class="unk">未知</span>' : free ? '<b>免費</b>' : `<b>${ap}${bMoney(bPer(it), it.cur)}</b><small>全體 ${bMoney(bAll(it), it.cur)}</small>`;
-      h += `<${own ? 'button' : 'div'} class="bit"${own ? ` data-act="bedit" data-id="${esc(it.id)}"` : ''}><div><b>${esc(it.name)}</b>${meta ? `<span>${meta}</span>` : ''}${nTxt ? `<em>${nTxt}</em>` : ''}</div><div class="r">${right}</div></${own ? 'button' : 'div'}>`;
+      B += `<${own ? 'button' : 'div'} class="bit"${own ? ` data-act="bedit" data-id="${esc(it.id)}"` : ''}><div><b>${esc(it.name)}</b>${meta ? `<span>${meta}</span>` : ''}${nTxt ? `<em>${nTxt}</em>` : ''}</div><div class="r">${right}</div></${own ? 'button' : 'div'}>`;
     }
-    h += `</div>`;
+    B += `</div>`;
   }
-  h += `<div class="small" style="margin:8px 20px">${own ? '點分類展開明細，點任一項可以修改金額與計算方式。' : '點分類展開明細；只有主辦人能修改預算。'}這頁是出發前的預估；實際花了多少請到「記帳」。</div>`;
-  if (own) h += `<button class="fab" data-act="badd">＋ 新增項目</button>`;
+  B += `<div class="small" style="margin:8px 20px">${own ? '點分類展開明細，點任一項可以修改金額與計算方式。' : '點分類展開明細；只有主辦人能修改預算。'}這頁是出發前的預估；實際花了多少請到「記帳」。</div>`;
+  h += cols(A, B);
+  if (own && !WIDE) h += `<button class="fab" data-act="badd">＋ 新增項目</button>`;
   return h;
 }
 async function bSeedCheck() { const b = $('#bimp'); if (!b) return; try { const r = await fetch('seeds/' + encodeURIComponent(cur.id) + '.json', { cache: 'no-cache' }); if (!r.ok) return; const d = await r.json(); B = { seed: d }; b.hidden = false; b.textContent = `匯入行程網站原本的預估（${d.items.length} 項）`; } catch (e) {} }
@@ -468,12 +481,13 @@ async function saveResto() {
 /* 成員 */
 function pMem() {
   const L = memberList(), own = isOwner();
-  let h = head('成員') + `<div class="card">${L.map(m => `<div class="mrow">${ava(m.uid)}<b>${esc(m.name)}${m.uid === me.uid ? '（我）' : ''}</b><span class="r">${m.role === 'owner' ? '主辦人' : '成員'}${own && m.email ? '<br>' + esc(m.email) : ''}</span>${own && m.uid !== me.uid ? `<button class="small" data-act="kick" data-u="${esc(m.uid)}" style="margin-left:6px">移除</button>` : ''}</div>`).join('')}</div>`;
-  if (own) h += `<div class="card"><b>邀請連結</b><div class="small" style="margin-top:4px">傳到 LINE 群組，家人點開、用 Google 登入就會加入這趟。</div><div id="inv"><div class="small" style="margin-top:8px">讀取中…</div></div></div>`;
-  else h += `<div class="card small">要邀請其他人，請主辦人 ${esc((L.find(m => m.role === 'owner') || {}).name || '')} 產生邀請連結。</div>`;
-  h += `<div class="card small">登入帳號：${esc(me.name)}　<button class="lnk" data-act="logout">登出</button></div>`;
+  let h = head('成員'), A = `<div class="card">${L.map(m => `<div class="mrow">${ava(m.uid)}<b>${esc(m.name)}${m.uid === me.uid ? '（我）' : ''}</b><span class="r">${m.role === 'owner' ? '主辦人' : '成員'}${own && m.email ? '<br>' + esc(m.email) : ''}</span>${own && m.uid !== me.uid ? `<button class="small" data-act="kick" data-u="${esc(m.uid)}" style="margin-left:6px">移除</button>` : ''}</div>`).join('')}</div>`;
+  let B = '';
+  if (own) B += `<div class="card"><b>邀請連結</b><div class="small" style="margin-top:4px">傳到 LINE 群組，家人點開、用 Google 登入就會加入這趟。</div><div id="inv"><div class="small" style="margin-top:8px">讀取中…</div></div></div>`;
+  else B += `<div class="card small">要邀請其他人，請主辦人 ${esc((L.find(m => m.role === 'owner') || {}).name || '')} 產生邀請連結。</div>`;
+  B += `<div class="card small">登入帳號：${esc(me.name)}　<button class="lnk" data-act="logout">登出</button></div>`;
   if (own) setTimeout(drawInvite, 0);
-  return h;
+  return h + cols(A, B);
 }
 async function drawInvite() {
   const box = $('#inv'); if (!box) return;
