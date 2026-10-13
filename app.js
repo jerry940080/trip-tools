@@ -166,7 +166,7 @@ function pExp() {
     if (e.date !== last) { last = e.date; const dt = ex.filter(x => x.date === e.date).reduce((a, x) => a + c.toNT(+x.amount, x.cur), 0); h += `<div class="day"><span>${fmtD(e.date)}（${wd(e.date)}）</span><span>${nt(dt)}</span></div>`; }
     const n = Object.keys(e.shares || {}).length;
     const tag = e.mode === 'treat' ? `${mInfo(e.payer).name}請客` : e.mode === 'ratio' ? '比例' : e.mode === 'amount' ? '指定金額' : '';
-    h += `<button class="it" data-act="edit" data-id="${esc(e.id)}"><div class="ic">${esc(e.icon || '🧾')}</div><div><div class="n">${esc(e.title)}${tag ? `<span class="tag">${esc(tag)}</span>` : ''}</div><div class="m">${esc(mInfo(e.payer).name)} 付・${e.mode === 'treat' ? '不分攤' : n + ' 人分'}</div></div><div class="a">${money(+e.amount, e.cur)}${e.cur !== 'TWD' ? `<small>≈ ${nt(c.toNT(+e.amount, e.cur))}</small>` : ''}</div></button>`;
+    h += `<button class="it" data-act="edit" data-id="${esc(e.id)}"><div class="ic">${esc(e.icon || '🧾')}</div><div><div class="n">${esc(e.title)}${tag ? `<span class="tag">${esc(tag)}</span>` : ''}</div><div class="m">${e.date2 ? `<span class="rg">${fmtD(e.date)}–${fmtD(e.date2)}</span>` : ''}${esc(mInfo(e.payer).name)} 付・${e.mode === 'treat' ? '不分攤' : n + ' 人分'}</div></div><div class="a">${money(+e.amount, e.cur)}${e.cur !== 'TWD' ? `<small>≈ ${nt(c.toNT(+e.amount, e.cur))}</small>` : ''}</div></button>`;
   }
   h += `<button class="fab" data-act="add">＋ 記一筆</button>`;
   return h;
@@ -177,8 +177,8 @@ let F = null;
 function openExp(id) {
   const L = memberList(); const D = days(cur.trip); const t = todayISO();
   const e = id && (cur.expenses || []).find(x => x.id === id);
-  F = e ? { id, date: e.date, title: e.title, icon: e.icon || '🧾', amount: String(e.amount), cur: e.cur, payer: e.payer, mode: e.mode, shares: { ...e.shares }, by: e.by }
-    : { date: D.includes(t) ? t : (D[0] || t), title: '', icon: '🍽', amount: '', cur: 'JPY', payer: me.uid, mode: 'equal', shares: Object.fromEntries(L.map(m => [m.uid, 1])) };
+  F = e ? { id, date: e.date, date2: e.date2 || '', title: e.title, icon: e.icon || '🧾', amount: String(e.amount), cur: e.cur, payer: e.payer, mode: e.mode, shares: { ...e.shares }, by: e.by }
+    : { date: D.includes(t) ? t : (D[0] || t), date2: '', title: '', icon: '🍽', amount: '', cur: 'JPY', payer: me.uid, mode: 'equal', shares: Object.fromEntries(L.map(m => [m.uid, 1])) };
   drawExp();
 }
 function drawExp() {
@@ -202,15 +202,21 @@ function drawExp() {
   <div class="small" style="margin-top:4px" id="fConv">${convTxt()}</div>
   <div class="lab">名稱</div><input class="inp" id="fTitle" placeholder="例如：まぐろ館 午餐" value="${esc(F.title)}">
   <div class="chips" style="margin-top:8px">${ICONS.map(i => `<button class="chip ${F.icon === i ? 'on' : ''}" style="padding:4px 9px" data-act="icon" data-i="${i}">${i}</button>`).join('')}</div>
-  <div class="lab">日期</div><select class="inp" id="fDate">${(D.length ? D : [F.date]).concat(D.includes(F.date) || !D.length ? [] : [F.date]).map(d => `<option value="${d}" ${d === F.date ? 'selected' : ''}>${fmtD(d)}（${wd(d)}）</option>`).join('')}</select>
+  <div class="lab" style="display:flex;justify-content:space-between;align-items:center">日期<span class="dseg"><button data-act="dmulti" data-v="0" class="${F.date2 ? '' : 'on'}">單日</button><button data-act="dmulti" data-v="1" class="${F.date2 ? 'on' : ''}">多天</button></span></div>
+  ${F.date2 ? `<div class="drng"><select class="inp" id="fDate">${dOpts(D, F.date)}</select><span>到</span><select class="inp" id="fDate2">${dOpts(D.filter(d => d > F.date), F.date2)}</select></div><div class="small" style="margin-top:4px">${dSpan(F)}・記在第一天（住宿、機票、租車可以用多天）</div>`
+    : `<select class="inp" id="fDate">${dOpts(D, F.date)}</select>`}
   <div class="lab">誰先付的</div><div class="chips">${L.map(m => `<button class="chip ${F.payer === m.uid ? 'on' : ''}" data-act="payer" data-u="${esc(m.uid)}">${ava(m.uid)}${esc(m.name)}</button>`).join('')}</div>
   <div class="lab">怎麼分</div><div class="split">${[['equal', '平均'], ['ratio', '比例'], ['amount', '指定金額'], ['treat', '有人請客']].map(([k, t]) => `<button data-act="mode" data-m="${k}" class="${F.mode === k ? 'on' : ''}">${t}</button>`).join('')}</div>
   <div style="margin-top:4px">${rows}</div>
   <div class="err" id="ferr"></div>
   ${can ? `<button class="btn" data-act="save">存檔</button>${F.id ? '<button class="btn s" data-act="del">刪除這筆</button>' : ''}` : '<div class="small" style="margin-top:12px">這筆是別人記的，只有記帳的人或主辦人能改。</div>'}`;
   $('#dim').hidden = false;
-  $('#sheet').oninput = ev => { if (ev.target.id === 'fAmt' || ev.target.dataset.sh) liveExp(); };
+  $('#sheet').oninput = ev => { if (ev.target.id === 'fAmt' || ev.target.dataset.sh) liveExp(); if (ev.target.id === 'fDate' && F.date2) { readExp(); drawExp(); } };
 }
+function dOpts(D, v) { return (D.length ? D : [v]).concat(D.includes(v) || !D.length || !v ? [] : [v]).map(d => `<option value="${d}" ${d === v ? 'selected' : ''}>${fmtD(d)}（${wd(d)}）</option>`).join(''); }
+function dNext(d, n) { const t = new Date(d + 'T12:00:00'); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); }
+function dCount(a, b) { return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5); }
+function dSpan(e) { const n = dCount(e.date, e.date2); return `${fmtD(e.date)}（${wd(e.date)}）– ${fmtD(e.date2)}（${wd(e.date2)}）・${n + 1} 天${e.icon === '🏨' ? `・${n} 晚` : ''}`; }
 function convTxt() { const r = calc().rate; return F.cur === 'JPY' ? '≈ ' + nt((+F.amount || 0) / r) + `（匯率 1：${r}，可在結算頁改）` : ''; }
 function amtChk() { const s = Object.values(F.shares).reduce((a, b) => a + (+b || 0), 0), amt = +F.amount || 0; return `指定金額合計 ${money(s, F.cur)}／這筆 ${money(amt, F.cur)}${Math.abs(s - amt) > .5 ? '　<b style="color:var(--bad)">對不上</b>' : '　✓'}`; }
 function liveExp() {
@@ -218,7 +224,7 @@ function liveExp() {
   document.querySelectorAll('[data-ea]').forEach(b => { const u = b.dataset.ea; if (!(u in F.shares)) return; const s = +F.shares[u] || 0; b.textContent = money(F.mode === 'amount' ? s : amt * (F.mode === 'equal' ? 1 : s) / (F.mode === 'equal' ? Object.keys(F.shares).length || 1 : sum), F.cur); });
   const c = $('#fConv'); if (c) c.textContent = convTxt(); const k = $('#fChk'); if (k) k.innerHTML = amtChk();
 }
-function readExp() { const a = $('#fAmt'), t = $('#fTitle'), d = $('#fDate'); if (a) F.amount = a.value.replace(/[^\d.]/g, ''); if (t) F.title = t.value; if (d) F.date = d.value; document.querySelectorAll('[data-sh]').forEach(i => { if (i.dataset.sh in F.shares) F.shares[i.dataset.sh] = i.value.replace(/[^\d.]/g, ''); }); }
+function readExp() { const a = $('#fAmt'), t = $('#fTitle'), d = $('#fDate'), d2 = $('#fDate2'); if (a) F.amount = a.value.replace(/[^\d.]/g, ''); if (t) F.title = t.value; if (d) F.date = d.value; if (d2) F.date2 = d2.value; if (F.date2 && F.date2 <= F.date) F.date2 = dNext(F.date, 1); document.querySelectorAll('[data-sh]').forEach(i => { if (i.dataset.sh in F.shares) F.shares[i.dataset.sh] = i.value.replace(/[^\d.]/g, ''); }); }
 async function saveExp() {
   readExp(); const amt = +F.amount; const err = $('#ferr');
   if (!(amt > 0)) return err.textContent = '請輸入金額';
@@ -231,11 +237,20 @@ async function saveExp() {
     if (!Object.keys(shares).length) return err.textContent = '至少要有一個人分';
     if (F.mode === 'amount') { const s = Object.values(shares).reduce((a, b) => a + b, 0); if (Math.abs(s - amt) > .5) return err.textContent = '指定金額加起來要等於這筆的金額'; }
   }
-  const data = { date: F.date, title: F.title.trim(), icon: F.icon, amount: amt, cur: F.cur, payer: F.payer, mode: F.mode, shares, by: F.by || me.uid, at: F.id ? (cur.expenses.find(x => x.id === F.id) || {}).at || Date.now() : Date.now() };
+  const data = { date: F.date, date2: F.date2 && F.date2 > F.date ? F.date2 : null, title: F.title.trim(), icon: F.icon, amount: amt, cur: F.cur, payer: F.payer, mode: F.mode, shares, by: F.by || me.uid, at: F.id ? (cur.expenses.find(x => x.id === F.id) || {}).at || Date.now() : Date.now() };
   bg(F.id ? api.set(cur.id, 'expenses', F.id, data) : api.add(cur.id, 'expenses', data)); closeSheet(); toast(navigator.onLine === false ? '已存在手機，連上網路後自動同步' : '已存檔');
 }
 // 寫入不等伺服器回應（離線時會一直等），失敗才跳提示
 function bg(p) { Promise.resolve(p).catch(e => { toast(errMsg(e)); console.error(e); }); }
+(function sheetSwipe() {
+  const sh = document.getElementById('sheet'); if (!sh) return; let y0 = null, dy = 0, on = false;
+  sh.addEventListener('touchstart', e => { if (sh.scrollTop > 0 || e.touches.length > 1) { y0 = null; return; } y0 = e.touches[0].clientY; dy = 0; on = false; }, { passive: true });
+  sh.addEventListener('touchmove', e => { if (y0 == null) return; dy = e.touches[0].clientY - y0;
+    if (!on && (dy < 6 || sh.scrollTop > 0)) { if (dy < 0) y0 = null; return; }
+    on = true; e.preventDefault(); sh.classList.add('dragging'); sh.style.transform = `translateY(${Math.max(0, dy * .9)}px)`; }, { passive: false });
+  sh.addEventListener('touchend', () => { if (y0 == null) return; y0 = null; sh.classList.remove('dragging'); if (!on) return;
+    if (dy > 100) { sh.style.transform = 'translateY(110%)'; setTimeout(() => { closeSheet(); sh.style.transform = ''; }, 200); } else sh.style.transform = ''; on = false; });
+})();
 function closeSheet() { $('#dim').hidden = true; F = null; RF = null; if (B) B.f = null; }
 
 /* 結算 */
@@ -255,7 +270,7 @@ function csv() {
   const c = calc(); const q = s => '"' + String(s).replace(/"/g, '""') + '"';
   const rows = [['日期', '名稱', '金額', '幣別', '台幣', '誰付', '分法', '分攤']];
   for (const e of (cur.expenses || []).slice().sort((a, b) => a.date.localeCompare(b.date)))
-    rows.push([e.date, e.title, e.amount, e.cur === 'TWD' ? '台幣' : '日圓', Math.round(c.toNT(+e.amount, e.cur)), mInfo(e.payer).name, { equal: '平均', ratio: '比例', amount: '指定金額', treat: '請客' }[e.mode], Object.entries(e.shares || {}).map(([u, s]) => mInfo(u).name + ':' + s).join(' ')]);
+    rows.push([e.date2 ? e.date + '~' + e.date2 : e.date, e.title, e.amount, e.cur === 'TWD' ? '台幣' : '日圓', Math.round(c.toNT(+e.amount, e.cur)), mInfo(e.payer).name, { equal: '平均', ratio: '比例', amount: '指定金額', treat: '請客' }[e.mode], Object.entries(e.shares || {}).map(([u, s]) => mInfo(u).name + ':' + s).join(' ')]);
   rows.push([]); rows.push(['成員', '先付', '應分', '結餘']);
   memberList().forEach(m => rows.push([m.name, Math.round(c.paid[m.uid] || 0), Math.round(c.owe[m.uid] || 0), Math.round(c.bal[m.uid] || 0)]));
   const blob = new Blob(['﻿' + rows.map(r => r.map(q).join(',')).join('\n')], { type: 'text/csv' });
@@ -273,34 +288,69 @@ function bPer(it) { const v = it.amt; if (v == null || v === '') return null; co
 function bAll(it) { const v = it.amt; if (v == null || v === '') return null; const n = pplOf(); return it.mode === 'pp' ? v * n : it.mode === 'room' ? v * (+it.rooms || 1) : +v; }
 const bMoney = (v, c) => v == null ? '' : money(v, c === 'NT' ? 'TWD' : 'JPY');
 // 晚數：有填 nights 用 nights；住宿組沒填時從說明裡的「N 晚」讀（舊資料也能顯示每人每晚）
-function bNights(it) { if (+it.nights > 0) return +it.nights; const m = it.g === '住宿' && /(\d+)\s*晚/.exec(it.note || ''); return m ? +m[1] : 0; }
+function bNights(it) { if (+it.nights > 0) return +it.nights; if (it.g !== '住宿') return 0; const m = /(\d+)\s*晚/.exec(it.note || ''); if (m) return +m[1];
+  const r = /(\d{1,2})\/(\d{1,2})\s*[–\-～~]\s*(?:\d{1,2}\/)?(\d{1,2})/.exec(it.name || ''); if (r && +r[3] >= +r[2]) return +r[3] - +r[2] + 1; // 名稱「2/15–16」＝住 15、16 兩晚
+  return /^\s*\d{1,2}\/\d{1,2}(?!\s*[–\-～~])/.test(it.name || '') ? 1 : 0; }
 function bNightTxt(it) { const p = bPer(it), n = bNights(it); return p != null && n > 0 && +it.amt !== 0 ? `每人每晚 ${bMoney(p / n, it.cur)}` : ''; }
 function bHow(it) { const n = pplOf(); return it.mode === 'pp' ? `每人價 × ${n} 人` : it.mode === 'room' ? `每間 × ${+it.rooms || 1} 間 ÷ ${n} 人` : `總價 ÷ ${n} 人`; }
 function bSum(list) { const per = { NT: 0, JPY: 0 }, all = { NT: 0, JPY: 0 }; let u = 0; for (const it of list) { const p = bPer(it); if (p == null) { u++; continue; } per[it.cur] += p; all[it.cur] += bAll(it); } return { per, all, u }; }
 function bTxt(o) { const t = []; if (o.NT) t.push(nt(o.NT)); if (o.JPY) t.push(yen(o.JPY)); return t.join(' ＋ ') || '—'; }
+const BICO = { 機票: '✈️', 住宿: '🛏', 交通: '🚆', '門票・體驗': '🎟', 餐飲: '🍜', 其他: '📦', 選項: '✨' };
+const BCOL = ['#2b4c7e', '#c67139', '#56633f', '#b2622d', '#8a3f5c', '#7a8a5e', '#3f6fa8'];
+const BOPEN = {};   // 明細展開的分組（只存在這次開啟）
+// 每人每晚長條：住宿項目依名稱的起始日期攤成一晚一根；讀不到日期的排在後面
+function bNightBars(L, rate) {
+  const toNT = (v, c) => c === 'NT' ? v : v / rate, bars = [], hotels = [];
+  for (const it of L.filter(x => x.g === '住宿' && !x.opt)) {
+    const n = bNights(it), p = bPer(it); if (!n || p == null || +it.amt === 0) continue;
+    const lab = (it.name || '').replace(/^[\s\d/–\-～~（）()一二三四五六日・]+/, '').replace(/（.*?）|\(.*?\)/g, '').trim() || it.name;
+    if (!hotels.includes(lab)) hotels.push(lab);
+    const d = /(\d{1,2})\/(\d{1,2})/.exec(it.name || '');
+    for (let i = 0; i < n; i++) bars.push({ m: d ? +d[1] : 99, dd: d ? +d[2] + i : 99, v: toNT(p / n, it.cur), lab, ord: it.order || 0 });
+  }
+  bars.sort((x, y) => x.m - y.m || x.dd - y.dd || x.ord - y.ord);
+  return { bars, hotels };
+}
 function pBudget() {
   const own = isOwner(), L = (cur.budget || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)), n = pplOf(), rate = +cur.trip.rate || 4.8;
-  let h = head('預算');
+  let h = head('花費預算');
   if (cur.bErr) return h + `<div class="empty">預算還讀不到。<br>${own ? '請到 Firebase 主控台把最新的 firestore.rules 貼上並發布（多了「預算」的權限）。' : '主辦人還在設定，晚點再來看。'}</div>`;
   h += `<div class="rate"><span>同行人數</span>${own ? `<span class="ppl"><button data-act="ppl" data-d="-1">−</button><b>${n} 人</b><button data-act="ppl" data-d="1">＋</button></span>` : `<b>${n} 人</b>`}</div>`;
   if (!L.length) return h + (own ? `<div class="empty">還沒有預算項目。<br><button class="btn" data-act="bimport" id="bimp" hidden>匯入行程網站原本的預估</button><button class="btn s" data-act="badd">＋ 自己新增一項</button></div>` : `<div class="empty">主辦人還沒填預算。</div>`) + (own ? (setTimeout(bSeedCheck, 0), '') : '');
-  const S = bSum(L.filter(x => !x.opt));
-  const perNT = S.per.NT + S.per.JPY / rate, allNT = S.all.NT + S.all.JPY / rate;
-  h += `<div class="sum"><div style="display:flex;justify-content:space-between;gap:10px"><div><div class="k">每人合計（已知）</div><div class="v">${bTxt(S.per)}</div><div class="k" style="margin-top:2px">約合 ${nt(perNT)}</div></div><div style="text-align:right"><div class="k">全體 ${n} 人</div><div class="v" style="font-size:17px">${bTxt(S.all)}</div><div class="k" style="margin-top:2px">約合 ${nt(allNT)}</div></div></div>
-    <div class="k" style="margin-top:8px">${S.u ? S.u + ' 項金額未知・' : ''}日圓依匯率 1：${rate} 換算（結算頁可改）・選項不計入</div></div>`;
-  const groups = BG.concat([...new Set(L.map(x => x.g))].filter(g => !BG.includes(g)));
+  const toNT = o => o.NT + o.JPY / rate, S = bSum(L.filter(x => !x.opt));
+  h += `<div class="sum bsum"><div class="k">每人大約要準備</div><div class="v">${nt(toNT(S.per))}</div>
+    <div class="k" style="margin-top:3px">全體 ${n} 人 約 ${nt(toNT(S.all))}${S.u ? `・另有 ${S.u} 項金額未知` : ''}</div></div>`;
+  const groups = BG.concat([...new Set(L.map(x => x.g))].filter(g => !BG.includes(g))).filter(g => L.some(x => x.g === g));
+  // 各類每人花費長條（台幣）
+  const gs = groups.filter(g => g !== '選項').map((g, i) => ({ g, v: toNT(bSum(L.filter(x => x.g === g && !x.opt)).per), c: BCOL[i % BCOL.length] }));
+  const mx = Math.max(1, ...gs.map(x => x.v));
+  h += `<div class="bbars">${gs.map(x => `<div class="bb"><b>${esc(x.g)}</b><div class="t"><i style="width:${Math.max(x.v ? 3 : 0, x.v / mx * 100).toFixed(1)}%;background:${x.c}"></i></div><span>${x.v ? Math.round(x.v).toLocaleString('en-US') : '—'}</span></div>`).join('')}
+    <div class="bbn">每人・台幣（日圓 ÷ ${rate}）・選項不計入</div></div>`;
+  // 每人每晚住宿
+  const NB = bNightBars(L, rate);
+  if (NB.bars.length) {
+    const nmx = Math.max(...NB.bars.map(x => x.v)), avg = NB.bars.reduce((a, x) => a + x.v, 0) / NB.bars.length, col = l => BCOL[NB.hotels.indexOf(l) % BCOL.length];
+    const top = NB.bars.reduce((a, x) => x.v > a.v ? x : a, NB.bars[0]);
+    h += `<div class="bnight"><b>每人每晚住宿</b><p>${NB.bars.length} 晚・平均 ${nt(avg)}／晚${NB.hotels.length > 1 ? `・最貴：${esc(top.lab)}` : ''}</p>
+      <div class="nc" style="grid-template-columns:repeat(${NB.bars.length},1fr)">${NB.bars.map(x => `<div><em>${Math.round(x.v).toLocaleString('en-US')}</em><i style="height:${Math.max(4, x.v / nmx * 92).toFixed(0)}px;background:${col(x.lab)}"></i><small>${x.m < 99 ? x.m + '/' + x.dd : ''}</small></div>`).join('')}</div>
+      <div class="lg">${NB.hotels.map(l => `<span><i style="background:${col(l)}"></i>${esc(l)}</span>`).join('')}</div></div>`;
+  }
+  // 明細：每類一張卡，點開才列項目
   for (const g of groups) {
-    const G = L.filter(x => x.g === g); if (!G.length) continue;
-    h += `<div class="bg"><div class="bh"><b>${esc(g === '選項' ? '選項（去了才算，不計入合計）' : g)}</b><i>每人</i><i>全體</i></div>`;
-    for (const it of G) {
-      const unk = it.amt == null || it.amt === '', free = +it.amt === 0 && !unk, ap = it.approx ? '約 ' : '';
-      const cell = v => unk ? '<em class="unk">未知</em>' : free ? '<em>免費</em>' : `<em>${ap}${bMoney(v, it.cur)}</em>`;
-      h += `<${own ? 'button' : 'div'} class="br"${own ? ` data-act="bedit" data-id="${esc(it.id)}"` : ''}><div><b>${esc(it.name)}</b><span>${[esc(it.note), unk || free ? '' : bHow(it)].filter(Boolean).join('・')}</span>${bNightTxt(it) ? `<span class="pn">${bNightTxt(it)}</span>` : ''}</div>${cell(bPer(it))}${cell(bAll(it))}</${own ? 'button' : 'div'}>`;
+    const G = L.filter(x => x.g === g), opt = g === '選項', s2 = bSum(G), on = !!BOPEN[g];
+    const sub = [`${G.length} 項`]; if (s2.u) sub.push(`${s2.u} 項未知`); if (opt) sub.push('去了才算・不計入');
+    if (g === '住宿' && NB.bars.length) sub.push(`共 ${NB.bars.length} 晚`);
+    const yenTxt = s2.per.JPY ? `<small>${s2.per.NT ? nt(s2.per.NT) + ' ＋ ' : ''}${yen(s2.per.JPY)}</small>` : '';
+    h += `<div class="bcard${opt ? ' opt' : ''}${on ? ' on' : ''}"><button class="bch" data-act="btog" data-g="${esc(g)}"><i>${BICO[g] || '•'}</i><div><b>${esc(g)}</b><small>${sub.join('・')}</small></div><div class="r">${toNT(s2.per) ? nt(toNT(s2.per)) : '—'}${yenTxt}</div><span class="ar">${on ? '⌄' : '›'}</span></button>`;
+    if (on) for (const it of G) {
+      const unk = it.amt == null || it.amt === '', free = +it.amt === 0 && !unk, ap = it.approx ? '約 ' : '', ni = bNights(it), nTxt = bNightTxt(it);
+      const meta = [ni && g === '住宿' ? `${ni} 晚` : '', esc(it.note), unk || free ? '' : bHow(it)].filter(Boolean).join('・');
+      const right = unk ? '<span class="unk">未知</span>' : free ? '<b>免費</b>' : `<b>${ap}${bMoney(bPer(it), it.cur)}</b><small>全體 ${bMoney(bAll(it), it.cur)}</small>`;
+      h += `<${own ? 'button' : 'div'} class="bit"${own ? ` data-act="bedit" data-id="${esc(it.id)}"` : ''}><div><b>${esc(it.name)}</b>${meta ? `<span>${meta}</span>` : ''}${nTxt ? `<em>${nTxt}</em>` : ''}</div><div class="r">${right}</div></${own ? 'button' : 'div'}>`;
     }
-    if (g !== '選項') { const s2 = bSum(G); h += `<div class="br bt"><div><b>小計</b>${s2.u ? `<span>另有 ${s2.u} 項未知</span>` : ''}</div><em>${bTxt(s2.per)}</em><em>${bTxt(s2.all)}</em></div>`; }
     h += `</div>`;
   }
-  h += `<div class="small" style="margin:8px 20px">${own ? '點任一項可以修改金額與計算方式。' : '只有主辦人能修改預算。'}這頁是出發前的預估；實際花了多少請到「記帳」。</div>`;
+  h += `<div class="small" style="margin:8px 20px">${own ? '點分類展開明細，點任一項可以修改金額與計算方式。' : '點分類展開明細；只有主辦人能修改預算。'}這頁是出發前的預估；實際花了多少請到「記帳」。</div>`;
   if (own) h += `<button class="fab" data-act="badd">＋ 新增項目</button>`;
   return h;
 }
@@ -449,7 +499,8 @@ document.addEventListener('click', async ev => {
     if (F) {
       readExp();
       if (a === 'cur') { F.cur = el.dataset.c; return drawExp(); }
-      if (a === 'icon') { F.icon = el.dataset.i; return drawExp(); }
+      if (a === 'icon') { F.icon = el.dataset.i; if (!F.id && !F.date2 && (F.icon === '🏨' || F.icon === '✈')) { const D = days(cur.trip), end = F.icon === '✈' && D.length ? D[D.length - 1] : dNext(F.date, 1); F.date2 = end > F.date ? end : dNext(F.date, 1); } return drawExp(); }
+      if (a === 'dmulti') { F.date2 = el.dataset.v === '1' ? (F.date2 || dNext(F.date, 1)) : ''; return drawExp(); }
       if (a === 'payer') { F.payer = el.dataset.u; return drawExp(); }
       if (a === 'mode') { const m = el.dataset.m; if (m !== F.mode) { F.mode = m; const amt = +F.amount || 0, ks = Object.keys(F.shares).length ? Object.keys(F.shares) : memberList().map(x => x.uid); F.shares = Object.fromEntries(ks.map(u => [u, m === 'amount' ? Math.round(amt / ks.length) : 1])); } return drawExp(); }
       if (a === 'tog') { const u = el.dataset.u; if (u in F.shares) delete F.shares[u]; else F.shares[u] = F.mode === 'amount' ? 0 : 1; return drawExp(); }
@@ -459,6 +510,7 @@ document.addEventListener('click', async ev => {
     if (a === 'ppl') { const v = Math.max(1, Math.min(20, pplOf() + (+el.dataset.d))); bg(api.updateTrip(cur.id, { ppl: v })); return; }
     if (a === 'badd') return openBudget();
     if (a === 'bedit') return openBudget(el.dataset.id);
+    if (a === 'btog') { const g = el.dataset.g; BOPEN[g] = !BOPEN[g]; return render(); }
     if (B && B.f && ['bcur', 'bmode', 'bsave', 'bdel'].includes(a)) {
       readBudget();
       if (a === 'bcur') { B.f.cur = el.dataset.c; return drawBudget(); }

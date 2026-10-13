@@ -23,7 +23,7 @@ users/{uid}                 {trips:{tripId:{title,start,end,color,cover,role}}} 
 trips/{id}                  {title,start,end,color,cover,owner,rate,createdAt}     ← id＝行程 repo 名稱
 trips/{id}/private/invite   {key,expires(Timestamp)}                               ← 只有主辦人能讀寫
 trips/{id}/members/{uid}    {uid,name,photo,email,role:'owner'|'member',key,joinedAt}
-trips/{id}/expenses/{auto}  {date,title,icon,amount,cur:'JPY'|'TWD',payer,mode:'equal'|'ratio'|'amount'|'treat',shares:{uid:份數或金額},by,at}
+trips/{id}/expenses/{auto}  {date,date2(多天的最後一天，可無),title,icon,amount,cur:'JPY'|'TWD',payer,mode:'equal'|'ratio'|'amount'|'treat',shares:{uid:份數或金額},by,at}
 trips/{id}/settles/{auto}   {from,to,amount(台幣),at,by}
 trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending'|'in'|'no',at,decidedAt}
 ```
@@ -63,6 +63,18 @@ trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending
   **這個檔是公開的**（GitHub Pages）；使用者 2026-10-13 匯入完成後已刪除（之後要匯入別的行程，再放一份 `seeds/<行程ID>.json`，匯入完就刪）。
 - 驗證：IzuAtami 對話 scratchpad `tt/bud.js`（匯入、Airbnb 3,044／12,176、改人數重算、每間×間數、留空＝未知、刪除、成員唯讀、非成員擋、嵌入無溢出）、
   `tt/emb3.js`（行程網站嵌入）；`t1.js` 的分頁位置因為多了預算往後挪一格。
+
+## 花費頁改版、記一筆多天與下拉關閉（2026-10-13）
+- **花費頁（預算）用使用者選的模板 D「圖表＋每晚長條」**（樣板在 IzuAtami 對話 scratchpad `budget-mockup.png`）：
+  摘要卡（每人大約要準備，全部換成台幣）→ 各分類每人長條（`.bbars`，選項不計入）→ **每人每晚住宿長條**（`bNightBars`：住宿項目依名稱的起始日期「2/11」攤成一晚一根，
+  同一家同色、下方圖例，讀不到日期的排後面）→ 每個分類一張可展開的卡（`BOPEN`，預設全收合，`data-act="btog"`），展開後每項顯示每人金額、全體、計算方式、住宿的「每人每晚」膠囊。
+  主辦人點項目照舊開編輯表單。舊的三欄表格（`.bg／.bh／.br`）CSS 還在但不再使用。
+- `bNights()` 再多一層推算：`nights` 沒填、說明也沒有「N 晚」時，從名稱讀「2/15–16」＝2 晚、只有「2/10」＝1 晚（住宿組才推）。
+- **記一筆多天**：日期列右邊「單日／多天」切換；多天時兩個選單（從／到）＋「N 天・N 晚」說明，存成 `date2`（單日時存 `null`）。
+  選 🏨 自動切多天（到隔天）、選 ✈ 自動到行程最後一天，可再改。**分帳與每日小計都記在第一天**；記帳列表顯示「2/11–2/13」膠囊，CSV 日期欄寫 `起~迄`。
+- **底部表單可下拉關閉**（`sheetSwipe`，記一筆、預算、推薦等所有 `#sheet` 共用）：內容捲到最上面再往下拉，表單跟著手指，超過 100px 放開就關閉、不到就彈回；`overscroll-behavior:contain`。
+- 驗證：IzuAtami scratchpad `tt/bud2.js`（路由 seed.json 匯入、摘要、分類長條、7 根每晚長條與平均、展開住宿、點項目編輯、🏨 自動多天、存檔後列表顯示期間、修改保留／切回單日、
+  CDP 觸控下拉關閉與小幅彈回，18 項）、`t1.js` 照舊全過。`bud.js` 依舊三欄版面寫的，已過時。
 
 ## 嵌入時的分頁（2026-10-13 起）
 使用者覺得「花費和記帳看起來太像」，要求：花費只要一個預算頁（不要子分頁）、記帳拿掉預算、推薦搬到行程網站的餐廳裡。
