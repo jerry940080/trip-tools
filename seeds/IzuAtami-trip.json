@@ -16,50 +16,54 @@
   {
    "g": "住宿",
    "name": "2/10 品川王子大飯店 北塔",
-   "note": "1 晚・NT 2,145／晚",
+   "note": "",
    "amt": 2145,
    "cur": "NT",
    "mode": "pp",
    "rooms": 1,
    "approx": false,
    "opt": false,
-   "order": 20
+   "order": 20,
+   "nights": 1
   },
   {
    "g": "住宿",
    "name": "2/11–12 靜岡 Airbnb（馬渕・整棟）",
-   "note": "2 晚・已訂・4 人同住整棟",
+   "note": "已訂・4 人同住整棟",
    "amt": 12176,
    "cur": "NT",
    "mode": "total",
    "rooms": 1,
    "approx": false,
    "opt": false,
-   "order": 30
+   "order": 30,
+   "nights": 2
   },
   {
    "g": "住宿",
    "name": "2/13–14 LiVEMAX Resort 熱海 Ocean",
-   "note": "2 晚・NT 4,122／晚",
+   "note": "",
    "amt": 8244,
    "cur": "NT",
    "mode": "pp",
    "rooms": 1,
    "approx": false,
    "opt": false,
-   "order": 40
+   "order": 40,
+   "nights": 2
   },
   {
    "g": "住宿",
    "name": "2/15–16 品川王子大飯店 北塔",
-   "note": "2 晚・NT 2,025／晚",
+   "note": "",
    "amt": 4050,
    "cur": "NT",
    "mode": "pp",
    "rooms": 1,
    "approx": false,
    "opt": false,
-   "order": 50
+   "order": 50,
+   "nights": 2
   },
   {
    "g": "交通",

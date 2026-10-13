@@ -269,6 +269,9 @@ const pplOf = () => Math.max(1, +(cur.trip && cur.trip.ppl) || 4);
 function bPer(it) { const v = it.amt; if (v == null || v === '') return null; const n = pplOf(); return it.mode === 'pp' ? +v : it.mode === 'room' ? v * (+it.rooms || 1) / n : v / n; }
 function bAll(it) { const v = it.amt; if (v == null || v === '') return null; const n = pplOf(); return it.mode === 'pp' ? v * n : it.mode === 'room' ? v * (+it.rooms || 1) : +v; }
 const bMoney = (v, c) => v == null ? '' : money(v, c === 'NT' ? 'TWD' : 'JPY');
+// 晚數：有填 nights 用 nights；住宿組沒填時從說明裡的「N 晚」讀（舊資料也能顯示每人每晚）
+function bNights(it) { if (+it.nights > 0) return +it.nights; const m = it.g === '住宿' && /(\d+)\s*晚/.exec(it.note || ''); return m ? +m[1] : 0; }
+function bNightTxt(it) { const p = bPer(it), n = bNights(it); return p != null && n > 0 && +it.amt !== 0 ? `每人每晚 ${bMoney(p / n, it.cur)}` : ''; }
 function bHow(it) { const n = pplOf(); return it.mode === 'pp' ? `每人價 × ${n} 人` : it.mode === 'room' ? `每間 × ${+it.rooms || 1} 間 ÷ ${n} 人` : `總價 ÷ ${n} 人`; }
 function bSum(list) { const per = { NT: 0, JPY: 0 }, all = { NT: 0, JPY: 0 }; let u = 0; for (const it of list) { const p = bPer(it); if (p == null) { u++; continue; } per[it.cur] += p; all[it.cur] += bAll(it); } return { per, all, u }; }
 function bTxt(o) { const t = []; if (o.NT) t.push(nt(o.NT)); if (o.JPY) t.push(yen(o.JPY)); return t.join(' ＋ ') || '—'; }
@@ -289,7 +292,7 @@ function pBudget() {
     for (const it of G) {
       const unk = it.amt == null || it.amt === '', free = +it.amt === 0 && !unk, ap = it.approx ? '約 ' : '';
       const cell = v => unk ? '<em class="unk">未知</em>' : free ? '<em>免費</em>' : `<em>${ap}${bMoney(v, it.cur)}</em>`;
-      h += `<${own ? 'button' : 'div'} class="br"${own ? ` data-act="bedit" data-id="${esc(it.id)}"` : ''}><div><b>${esc(it.name)}</b><span>${[esc(it.note), unk || free ? '' : bHow(it)].filter(Boolean).join('・')}</span></div>${cell(bPer(it))}${cell(bAll(it))}</${own ? 'button' : 'div'}>`;
+      h += `<${own ? 'button' : 'div'} class="br"${own ? ` data-act="bedit" data-id="${esc(it.id)}"` : ''}><div><b>${esc(it.name)}</b><span>${[esc(it.note), unk || free ? '' : bHow(it)].filter(Boolean).join('・')}</span>${bNightTxt(it) ? `<span class="pn">${bNightTxt(it)}</span>` : ''}</div>${cell(bPer(it))}${cell(bAll(it))}</${own ? 'button' : 'div'}>`;
     }
     if (g !== '選項') { const s2 = bSum(G); h += `<div class="br bt"><div><b>小計</b>${s2.u ? `<span>另有 ${s2.u} 項未知</span>` : ''}</div><em>${bTxt(s2.per)}</em><em>${bTxt(s2.all)}</em></div>`; }
     h += `</div>`;
@@ -310,7 +313,8 @@ function drawBudget() {
   $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">${f.id ? '修改預算項目' : '新增預算項目'}</b><button class="small" data-act="close">取消</button></div>
   <div class="lab">分組</div><select class="inp" id="bG">${groups.map(g => `<option ${g === f.g ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select>
   <div class="lab">名稱</div><input class="inp" id="bN" value="${esc(f.name)}" placeholder="例如：2/13–14 LiVEMAX 熱海">
-  <div class="lab">說明（選填）</div><input class="inp" id="bNote" value="${esc(f.note)}" placeholder="例如：2 晚・4 人一間">
+  <div class="lab">說明（選填）</div><input class="inp" id="bNote" value="${esc(f.note)}" placeholder="例如：4 人一間">
+  <div class="lab">住幾晚（住宿才填，用來算每人每晚）</div><input class="inp" id="bNi" inputmode="numeric" placeholder="不是住宿就留空" value="${f.nights ? esc(f.nights) : (f.g === '住宿' && bNights(f) ? bNights(f) : '')}">
   <div class="lab">金額</div><div class="amt"><input id="bA" inputmode="decimal" placeholder="不知道就留空" value="${f.amt == null ? '' : esc(f.amt)}"><div class="cur"><button data-act="bcur" data-c="JPY" class="${f.cur === 'JPY' ? 'on' : ''}">日圓</button><button data-act="bcur" data-c="NT" class="${f.cur === 'NT' ? 'on' : ''}">台幣</button></div></div>
   <div class="lab">計算方式</div><div class="split" style="grid-template-columns:repeat(3,1fr)">${Object.entries(BMODE).map(([k, t]) => `<button data-act="bmode" data-m="${k}" class="${f.mode === k ? 'on' : ''}">${t}</button>`).join('')}</div>
   ${f.mode === 'room' ? `<div class="lab">間數</div><input class="inp" id="bR" inputmode="numeric" value="${esc(f.rooms || 1)}">` : ''}
@@ -321,14 +325,15 @@ function drawBudget() {
   $('#dim').hidden = false;
   $('#sheet').oninput = () => { readBudget(); const p = $('#bPrev'); if (p) p.innerHTML = bPrevTxt(B.f, pplOf()); };
 }
-function bPrevTxt(f, n) { const pp = bPer(f), aa = bAll(f); if (pp == null) return `同行 ${n} 人・金額留空會顯示「未知」`; return `同行 ${n} 人 → 每人 <b>${bMoney(pp, f.cur)}</b>・全體 <b>${bMoney(aa, f.cur)}</b>`; }
+function bPrevTxt(f, n) { const pp = bPer(f), aa = bAll(f), ni = bNightTxt(f); if (pp == null) return `同行 ${n} 人・金額留空會顯示「未知」`; if (ni) return `同行 ${n} 人 → 每人 <b>${bMoney(pp, f.cur)}</b>・全體 <b>${bMoney(aa, f.cur)}</b>・<b>${ni}</b>`; return `同行 ${n} 人 → 每人 <b>${bMoney(pp, f.cur)}</b>・全體 <b>${bMoney(aa, f.cur)}</b>`; }
 function readBudget() { const f = B.f, v = id => { const e = $(id); return e ? e.value : null; };
   if ($('#bG')) f.g = v('#bG'); if ($('#bN')) f.name = v('#bN'); if ($('#bNote')) f.note = v('#bNote');
   if ($('#bA')) { const a = v('#bA').replace(/[^\d.]/g, ''); f.amt = a === '' ? null : +a; }
   if ($('#bR')) f.rooms = Math.max(1, +v('#bR').replace(/\D/g, '') || 1);
+  if ($('#bNi')) { const x = v('#bNi').replace(/\D/g, ''); f.nights = x ? +x : 0; }
   if ($('#bAp')) f.approx = $('#bAp').checked; if ($('#bOpt')) f.opt = $('#bOpt').checked; }
 function saveBudget() { readBudget(); const f = B.f; if (!f.name.trim()) return $('#berr').textContent = '請填名稱';
-  const data = { g: f.g, name: f.name.trim(), note: (f.note || '').trim(), amt: f.amt, cur: f.cur, mode: f.mode, rooms: f.mode === 'room' ? (+f.rooms || 1) : 1, approx: !!f.approx, opt: !!f.opt, order: f.order || 0, by: me.uid, at: Date.now() };
+  const data = { g: f.g, name: f.name.trim(), note: (f.note || '').trim(), nights: +f.nights || 0, amt: f.amt, cur: f.cur, mode: f.mode, rooms: f.mode === 'room' ? (+f.rooms || 1) : 1, approx: !!f.approx, opt: !!f.opt, order: f.order || 0, by: me.uid, at: Date.now() };
   bg(f.id ? api.set(cur.id, 'budget', f.id, data) : api.add(cur.id, 'budget', data)); closeSheet(); toast('已存檔'); }
 
 /* 餐廳 */
