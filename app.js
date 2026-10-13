@@ -91,8 +91,11 @@ function openTrip(id) {
 /* ───────── 畫面 ───────── */
 const app = () => $('#app');
 const testBar = () => EMBED ? '' : `<div class="test">測試版${MOCK ? '（模擬資料）' : ''}・不影響正式行程網站</div>`;
+// 嵌在行程網站時：預算（花費）與推薦（餐廳）各自是一整頁、不顯示分頁列；記帳只留 記帳／結算／成員
 function tabs(on) {
-  const T = [['budget', '📋', '預算'], ['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['resto', '🍽', EMBED ? '推薦' : '餐廳'], ['mem', '👥', '成員']];
+  if (EMBED && (on === 'budget' || on === 'resto')) return '';
+  const T = EMBED ? [['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['mem', '👥', '成員']]
+    : [['budget', '📋', '預算'], ['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['resto', '🍽', '餐廳'], ['mem', '👥', '成員']];
   return `<nav class="tabs">${T.map(([k, i, t]) => `<a href="#/t/${encodeURIComponent(cur.id)}/${k}" class="${k === on ? 'on' : ''}"><i>${i}</i>${t}</a>`).join('')}</nav>`;
 }
 function head(title) {
@@ -350,7 +353,7 @@ function pResto() {
   const R = cur.restos || [], own = isOwner();
   const cnt = s => R.filter(r => r.status === s).length;
   const tabsR = [['in', '正式名單'], ['pending', '待收錄'], ['no', '已婉拒']];
-  let h = head('餐廳') + `<div class="seg">${tabsR.map(([k, t]) => `<button data-act="rtab" data-k="${k}" class="${RTAB === k ? 'on' : ''}">${t} ${cnt(k)}</button>`).join('')}</div>`;
+  let h = head(EMBED ? '家人推薦・收錄' : '餐廳') + `<div class="seg">${tabsR.map(([k, t]) => `<button data-act="rtab" data-k="${k}" class="${RTAB === k ? 'on' : ''}">${t} ${cnt(k)}</button>`).join('')}</div>`;
   h += `<div class="small" style="margin:0 20px 8px">${own ? '家人推薦的店先放在「待收錄」，你按「收錄」才進正式名單，並出現在行程網站的「餐廳」頁。' : '你推薦的店會先進「待收錄」，等主辦人收錄。'}</div>`;
   const L = R.filter(r => r.status === RTAB).sort((a, b) => (a.day || '9').localeCompare(b.day || '9') || (b.at || 0) - (a.at || 0));
   if (!L.length) h += `<div class="empty">${RTAB === 'pending' ? '目前沒有待收錄的店。按「＋ 推薦一家」貼 Google 地圖連結。' : '這裡還沒有店。'}</div>`;

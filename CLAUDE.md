@@ -64,6 +64,13 @@ trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending
 - 驗證：IzuAtami 對話 scratchpad `tt/bud.js`（匯入、Airbnb 3,044／12,176、改人數重算、每間×間數、留空＝未知、刪除、成員唯讀、非成員擋、嵌入無溢出）、
   `tt/emb3.js`（行程網站嵌入）；`t1.js` 的分頁位置因為多了預算往後挪一格。
 
+## 嵌入時的分頁（2026-10-13 起）
+使用者覺得「花費和記帳看起來太像」，要求：花費只要一個預算頁（不要子分頁）、記帳拿掉預算、推薦搬到行程網站的餐廳裡。
+- `tabs(on)`：嵌入模式下 `budget`、`resto` 兩頁**不顯示分頁列**（各自是行程網站裡的一整頁）；其他頁只有 **記帳／結算／成員** 三個分頁（3 欄）。
+  獨立開啟（沒有 `?embed=`）仍是五個分頁。
+- 嵌入時推薦頁標題叫「家人推薦・收錄」。行程網站：資訊›花費＝`budget`、資訊›記帳＝`exp`（同一個 iframe 換 hash）、
+  餐廳頁的「家人推薦」分段＝另一個 iframe 開 `resto`，「＋ 新增餐廳」開 `resto/add`。
+
 ## localStorage
 `tt-mock`、`tt-mock-me`（只有模擬模式）。Firebase 自己用 IndexedDB 存離線快取。同網域其他網站用 `izu-`、`hub-` 等前綴，不衝突。
 
