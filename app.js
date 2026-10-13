@@ -166,7 +166,7 @@ function pExp() {
     if (e.date !== last) { last = e.date; const dt = ex.filter(x => x.date === e.date).reduce((a, x) => a + c.toNT(+x.amount, x.cur), 0); h += `<div class="day"><span>${fmtD(e.date)}（${wd(e.date)}）</span><span>${nt(dt)}</span></div>`; }
     const n = Object.keys(e.shares || {}).length;
     const tag = e.mode === 'treat' ? `${mInfo(e.payer).name}請客` : e.mode === 'ratio' ? '比例' : e.mode === 'amount' ? '指定金額' : '';
-    h += `<button class="it" data-act="edit" data-id="${esc(e.id)}"><div class="ic">${esc(e.icon || '🧾')}</div><div><div class="n">${esc(e.title)}${tag ? `<span class="tag">${esc(tag)}</span>` : ''}</div><div class="m">${e.date2 ? `<span class="rg">${fmtD(e.date)}–${fmtD(e.date2)}</span>` : ''}${esc(mInfo(e.payer).name)} 付・${e.mode === 'treat' ? '不分攤' : n + ' 人分'}</div></div><div class="a">${money(+e.amount, e.cur)}${e.cur !== 'TWD' ? `<small>≈ ${nt(c.toNT(+e.amount, e.cur))}</small>` : ''}</div></button>`;
+    h += `<button class="it" data-act="edit" data-id="${esc(e.id)}"><div class="ic">${esc(e.icon || '🧾')}</div><div><div class="n">${esc(e.title)}${tag ? `<span class="tag">${esc(tag)}</span>` : ''}</div><div class="m">${eDates(e).length > 1 ? `<span class="rg">${esc(dTxt(eDates(e), false))}</span>` : ''}${esc(mInfo(e.payer).name)} 付・${e.mode === 'treat' ? '不分攤' : n + ' 人分'}</div></div><div class="a">${money(+e.amount, e.cur)}${e.cur !== 'TWD' ? `<small>≈ ${nt(c.toNT(+e.amount, e.cur))}</small>` : ''}</div></button>`;
   }
   h += `<button class="fab" data-act="add">＋ 記一筆</button>`;
   return h;
@@ -177,8 +177,8 @@ let F = null;
 function openExp(id) {
   const L = memberList(); const D = days(cur.trip); const t = todayISO();
   const e = id && (cur.expenses || []).find(x => x.id === id);
-  F = e ? { id, date: e.date, date2: e.date2 || '', title: e.title, icon: e.icon || '🧾', amount: String(e.amount), cur: e.cur, payer: e.payer, mode: e.mode, shares: { ...e.shares }, by: e.by }
-    : { date: D.includes(t) ? t : (D[0] || t), date2: '', title: '', icon: '🍽', amount: '', cur: 'JPY', payer: me.uid, mode: 'equal', shares: Object.fromEntries(L.map(m => [m.uid, 1])) };
+  F = e ? { id, date: e.date, dates: eDates(e), title: e.title, icon: e.icon || '🧾', amount: String(e.amount), cur: e.cur, payer: e.payer, mode: e.mode, shares: { ...e.shares }, by: e.by }
+    : { date: D.includes(t) ? t : (D[0] || t), dates: [D.includes(t) ? t : (D[0] || t)], title: '', icon: '🍽', amount: '', cur: 'JPY', payer: me.uid, mode: 'equal', shares: Object.fromEntries(L.map(m => [m.uid, 1])) };
   drawExp();
 }
 function drawExp() {
@@ -202,21 +202,37 @@ function drawExp() {
   <div class="small" style="margin-top:4px" id="fConv">${convTxt()}</div>
   <div class="lab">名稱</div><input class="inp" id="fTitle" placeholder="例如：まぐろ館 午餐" value="${esc(F.title)}">
   <div class="chips" style="margin-top:8px">${ICONS.map(i => `<button class="chip ${F.icon === i ? 'on' : ''}" style="padding:4px 9px" data-act="icon" data-i="${i}">${i}</button>`).join('')}</div>
-  <div class="lab" style="display:flex;justify-content:space-between;align-items:center">日期<span class="dseg"><button data-act="dmulti" data-v="0" class="${F.date2 ? '' : 'on'}">單日</button><button data-act="dmulti" data-v="1" class="${F.date2 ? 'on' : ''}">多天</button></span></div>
-  ${F.date2 ? `<div class="drng"><select class="inp" id="fDate">${dOpts(D, F.date)}</select><span>到</span><select class="inp" id="fDate2">${dOpts(D.filter(d => d > F.date), F.date2)}</select></div><div class="small" style="margin-top:4px">${dSpan(F)}・記在第一天（住宿、機票、租車可以用多天）</div>`
-    : `<select class="inp" id="fDate">${dOpts(D, F.date)}</select>`}
+  <div class="lab">日期<span class="small" style="font-weight:500;margin-left:6px">可以勾好幾天（機票去回、住宿每一晚）</span></div>
+  <button class="inp dbtn" data-act="dcal"><span>${esc(dTxt(F.dates))}</span><small>${F.dates.length > 1 ? F.dates.length + ' 天' : ''}</small><i>📅</i></button>
   <div class="lab">誰先付的</div><div class="chips">${L.map(m => `<button class="chip ${F.payer === m.uid ? 'on' : ''}" data-act="payer" data-u="${esc(m.uid)}">${ava(m.uid)}${esc(m.name)}</button>`).join('')}</div>
   <div class="lab">怎麼分</div><div class="split">${[['equal', '平均'], ['ratio', '比例'], ['amount', '指定金額'], ['treat', '有人請客']].map(([k, t]) => `<button data-act="mode" data-m="${k}" class="${F.mode === k ? 'on' : ''}">${t}</button>`).join('')}</div>
   <div style="margin-top:4px">${rows}</div>
   <div class="err" id="ferr"></div>
   ${can ? `<button class="btn" data-act="save">存檔</button>${F.id ? '<button class="btn s" data-act="del">刪除這筆</button>' : ''}` : '<div class="small" style="margin-top:12px">這筆是別人記的，只有記帳的人或主辦人能改。</div>'}`;
   $('#dim').hidden = false;
-  $('#sheet').oninput = ev => { if (ev.target.id === 'fAmt' || ev.target.dataset.sh) liveExp(); if (ev.target.id === 'fDate' && F.date2) { readExp(); drawExp(); } };
+  $('#sheet').oninput = ev => { if (ev.target.id === 'fAmt' || ev.target.dataset.sh) liveExp(); };
 }
-function dOpts(D, v) { return (D.length ? D : [v]).concat(D.includes(v) || !D.length || !v ? [] : [v]).map(d => `<option value="${d}" ${d === v ? 'selected' : ''}>${fmtD(d)}（${wd(d)}）</option>`).join(''); }
+// 日期（可複選）：expenses 存 dates（排序好的陣列）＋ date＝第一天（排序、每日小計、舊版相容）
+function eDates(e) { if (Array.isArray(e.dates) && e.dates.length) return e.dates.slice().sort(); if (e.date2 && e.date2 > e.date) { const o = []; for (let d = e.date; d <= e.date2; d = dNext(d, 1)) o.push(d); return o; } return [e.date]; }
 function dNext(d, n) { const t = new Date(d + 'T12:00:00'); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); }
-function dCount(a, b) { return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5); }
-function dSpan(e) { const n = dCount(e.date, e.date2); return `${fmtD(e.date)}（${wd(e.date)}）– ${fmtD(e.date2)}（${wd(e.date2)}）・${n + 1} 天${e.icon === '🏨' ? `・${n} 晚` : ''}`; }
+// 「2/11–2/13、2/17」：連續的日期合成一段
+function dTxt(L, wdOn = true) { L = (L || []).slice().sort(); if (!L.length) return '選日期'; const seg = []; let a = L[0], b = L[0];
+  for (const d of L.slice(1).concat([null])) { if (d && d === dNext(b, 1)) { b = d; continue; } seg.push(a === b ? fmtD(a) + (wdOn && L.length === 1 ? `（${wd(a)}）` : '') : `${fmtD(a)}–${fmtD(b)}`); if (d) a = b = d; }
+  return seg.join('、'); }
+let CAL = null;   // 月曆：{m:'YYYY-MM', sel:[...]}
+function openCal() { CAL = { m: (F.dates[0] || todayISO()).slice(0, 7), sel: F.dates.slice() }; drawCal(); }
+function drawCal() {
+  let el = $('#calp'); if (!el) { el = document.createElement('div'); el.id = 'calp'; el.className = 'calp'; document.body.appendChild(el); }
+  const [y, m] = CAL.m.split('-').map(Number), first = new Date(y, m - 1, 1, 12), nd = new Date(y, m, 0).getDate(), D = days(cur.trip), today = todayISO();
+  let cells = ''; for (let i = 0; i < first.getDay(); i++) cells += '<span></span>';
+  for (let d = 1; d <= nd; d++) { const iso = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`, on = CAL.sel.includes(iso);
+    cells += `<button data-act="cald" data-d="${iso}" class="${on ? 'on' : ''}${D.includes(iso) ? ' trip' : ''}${iso === today ? ' td' : ''}">${d}${on ? '<i>✓</i>' : ''}</button>`; }
+  el.innerHTML = `<div class="cal"><div class="calh"><button data-act="calm" data-d="-1" aria-label="上個月">‹</button><b>${y} 年 ${m} 月</b><button data-act="calm" data-d="1" aria-label="下個月">›</button></div>
+    <div class="calw">${'日一二三四五六'.split('').map(x => `<span>${x}</span>`).join('')}</div><div class="calg">${cells}</div>
+    <div class="calf"><span>${CAL.sel.length ? `已選 ${CAL.sel.length} 天：${esc(dTxt(CAL.sel, false))}` : '至少選一天'}</span>${D.length ? '<em>底色＝行程期間</em>' : ''}</div>
+    <div class="calb"><button class="btn s" data-act="calx">取消</button><button class="btn" data-act="calok" ${CAL.sel.length ? '' : 'disabled'}>完成</button></div></div>`;
+}
+function closeCal() { CAL = null; const el = $('#calp'); if (el) el.remove(); }
 function convTxt() { const r = calc().rate; return F.cur === 'JPY' ? '≈ ' + nt((+F.amount || 0) / r) + `（匯率 1：${r}，可在結算頁改）` : ''; }
 function amtChk() { const s = Object.values(F.shares).reduce((a, b) => a + (+b || 0), 0), amt = +F.amount || 0; return `指定金額合計 ${money(s, F.cur)}／這筆 ${money(amt, F.cur)}${Math.abs(s - amt) > .5 ? '　<b style="color:var(--bad)">對不上</b>' : '　✓'}`; }
 function liveExp() {
@@ -224,7 +240,7 @@ function liveExp() {
   document.querySelectorAll('[data-ea]').forEach(b => { const u = b.dataset.ea; if (!(u in F.shares)) return; const s = +F.shares[u] || 0; b.textContent = money(F.mode === 'amount' ? s : amt * (F.mode === 'equal' ? 1 : s) / (F.mode === 'equal' ? Object.keys(F.shares).length || 1 : sum), F.cur); });
   const c = $('#fConv'); if (c) c.textContent = convTxt(); const k = $('#fChk'); if (k) k.innerHTML = amtChk();
 }
-function readExp() { const a = $('#fAmt'), t = $('#fTitle'), d = $('#fDate'), d2 = $('#fDate2'); if (a) F.amount = a.value.replace(/[^\d.]/g, ''); if (t) F.title = t.value; if (d) F.date = d.value; if (d2) F.date2 = d2.value; if (F.date2 && F.date2 <= F.date) F.date2 = dNext(F.date, 1); document.querySelectorAll('[data-sh]').forEach(i => { if (i.dataset.sh in F.shares) F.shares[i.dataset.sh] = i.value.replace(/[^\d.]/g, ''); }); }
+function readExp() { const a = $('#fAmt'), t = $('#fTitle'); if (a) F.amount = a.value.replace(/[^\d.]/g, ''); if (t) F.title = t.value; F.dates = (F.dates || [F.date]).slice().sort(); F.date = F.dates[0]; document.querySelectorAll('[data-sh]').forEach(i => { if (i.dataset.sh in F.shares) F.shares[i.dataset.sh] = i.value.replace(/[^\d.]/g, ''); }); }
 async function saveExp() {
   readExp(); const amt = +F.amount; const err = $('#ferr');
   if (!(amt > 0)) return err.textContent = '請輸入金額';
@@ -237,7 +253,7 @@ async function saveExp() {
     if (!Object.keys(shares).length) return err.textContent = '至少要有一個人分';
     if (F.mode === 'amount') { const s = Object.values(shares).reduce((a, b) => a + b, 0); if (Math.abs(s - amt) > .5) return err.textContent = '指定金額加起來要等於這筆的金額'; }
   }
-  const data = { date: F.date, date2: F.date2 && F.date2 > F.date ? F.date2 : null, title: F.title.trim(), icon: F.icon, amount: amt, cur: F.cur, payer: F.payer, mode: F.mode, shares, by: F.by || me.uid, at: F.id ? (cur.expenses.find(x => x.id === F.id) || {}).at || Date.now() : Date.now() };
+  const data = { date: F.dates[0], dates: F.dates, date2: null, title: F.title.trim(), icon: F.icon, amount: amt, cur: F.cur, payer: F.payer, mode: F.mode, shares, by: F.by || me.uid, at: F.id ? (cur.expenses.find(x => x.id === F.id) || {}).at || Date.now() : Date.now() };
   bg(F.id ? api.set(cur.id, 'expenses', F.id, data) : api.add(cur.id, 'expenses', data)); closeSheet(); toast(navigator.onLine === false ? '已存在手機，連上網路後自動同步' : '已存檔');
 }
 // 寫入不等伺服器回應（離線時會一直等），失敗才跳提示
@@ -251,7 +267,7 @@ function bg(p) { Promise.resolve(p).catch(e => { toast(errMsg(e)); console.error
   sh.addEventListener('touchend', () => { if (y0 == null) return; y0 = null; sh.classList.remove('dragging'); if (!on) return;
     if (dy > 100) { sh.style.transform = 'translateY(110%)'; setTimeout(() => { closeSheet(); sh.style.transform = ''; }, 200); } else sh.style.transform = ''; on = false; });
 })();
-function closeSheet() { $('#dim').hidden = true; F = null; RF = null; if (B) B.f = null; }
+function closeSheet() { closeCal(); $('#dim').hidden = true; F = null; RF = null; if (B) B.f = null; }
 
 /* 結算 */
 function pSettle() {
@@ -270,7 +286,7 @@ function csv() {
   const c = calc(); const q = s => '"' + String(s).replace(/"/g, '""') + '"';
   const rows = [['日期', '名稱', '金額', '幣別', '台幣', '誰付', '分法', '分攤']];
   for (const e of (cur.expenses || []).slice().sort((a, b) => a.date.localeCompare(b.date)))
-    rows.push([e.date2 ? e.date + '~' + e.date2 : e.date, e.title, e.amount, e.cur === 'TWD' ? '台幣' : '日圓', Math.round(c.toNT(+e.amount, e.cur)), mInfo(e.payer).name, { equal: '平均', ratio: '比例', amount: '指定金額', treat: '請客' }[e.mode], Object.entries(e.shares || {}).map(([u, s]) => mInfo(u).name + ':' + s).join(' ')]);
+    rows.push([eDates(e).join(' '), e.title, e.amount, e.cur === 'TWD' ? '台幣' : '日圓', Math.round(c.toNT(+e.amount, e.cur)), mInfo(e.payer).name, { equal: '平均', ratio: '比例', amount: '指定金額', treat: '請客' }[e.mode], Object.entries(e.shares || {}).map(([u, s]) => mInfo(u).name + ':' + s).join(' ')]);
   rows.push([]); rows.push(['成員', '先付', '應分', '結餘']);
   memberList().forEach(m => rows.push([m.name, Math.round(c.paid[m.uid] || 0), Math.round(c.owe[m.uid] || 0), Math.round(c.bal[m.uid] || 0)]));
   const blob = new Blob(['﻿' + rows.map(r => r.map(q).join(',')).join('\n')], { type: 'text/csv' });
@@ -470,7 +486,7 @@ async function drawInvite() {
 
 /* ───────── 動作 ───────── */
 document.addEventListener('click', async ev => {
-  const el = ev.target.closest('[data-act]'); if (!el) { if (ev.target.id === 'dim') closeSheet(); return; }
+  const el = ev.target.closest('[data-act]'); if (!el) { if (ev.target.id === 'calp') closeCal(); else if (ev.target.id === 'dim') closeSheet(); return; }
   const a = el.dataset.act;
   try {
     if (a === 'login') { try { return await api.signIn(); } catch (e) { if (e && e.code === 'auth/popup-closed-by-user') return; return toast(e && e.code === 'auth/popup-blocked' ? '登入視窗被瀏覽器擋住了，請允許彈出視窗後再按一次' : e && e.code === 'auth/unauthorized-domain' ? '這個網址還沒加進 Firebase 已授權的網域' : '登入失敗：' + (e && (e.code || e.message))); } }
@@ -499,8 +515,12 @@ document.addEventListener('click', async ev => {
     if (F) {
       readExp();
       if (a === 'cur') { F.cur = el.dataset.c; return drawExp(); }
-      if (a === 'icon') { F.icon = el.dataset.i; if (!F.id && !F.date2 && (F.icon === '🏨' || F.icon === '✈')) { const D = days(cur.trip), end = F.icon === '✈' && D.length ? D[D.length - 1] : dNext(F.date, 1); F.date2 = end > F.date ? end : dNext(F.date, 1); } return drawExp(); }
-      if (a === 'dmulti') { F.date2 = el.dataset.v === '1' ? (F.date2 || dNext(F.date, 1)) : ''; return drawExp(); }
+      if (a === 'icon') { F.icon = el.dataset.i; return drawExp(); }
+      if (a === 'dcal') return openCal();
+      if (CAL && a === 'cald') { const d = el.dataset.d, i = CAL.sel.indexOf(d); if (i >= 0) CAL.sel.splice(i, 1); else CAL.sel.push(d); CAL.sel.sort(); return drawCal(); }
+      if (CAL && a === 'calm') { const [y, m] = CAL.m.split('-').map(Number), t = new Date(y, m - 1 + (+el.dataset.d), 1, 12); CAL.m = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0'); return drawCal(); }
+      if (CAL && a === 'calok') { if (!CAL.sel.length) return; F.dates = CAL.sel.slice(); F.date = F.dates[0]; closeCal(); return drawExp(); }
+      if (a === 'calx') { closeCal(); return; }
       if (a === 'payer') { F.payer = el.dataset.u; return drawExp(); }
       if (a === 'mode') { const m = el.dataset.m; if (m !== F.mode) { F.mode = m; const amt = +F.amount || 0, ks = Object.keys(F.shares).length ? Object.keys(F.shares) : memberList().map(x => x.uid); F.shares = Object.fromEntries(ks.map(u => [u, m === 'amount' ? Math.round(amt / ks.length) : 1])); } return drawExp(); }
       if (a === 'tog') { const u = el.dataset.u; if (u in F.shares) delete F.shares[u]; else F.shares[u] = F.mode === 'amount' ? 0 : 1; return drawExp(); }
