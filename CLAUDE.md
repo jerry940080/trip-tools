@@ -47,6 +47,21 @@ trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending
 登出回這趟、登入頁多「改在新視窗打開記帳」。`fb.js` 載入失敗（沒網路、被擋）顯示「連不上記帳伺服器」而不是一直「載入中…」。
 其他行程網站要嵌入，照 IzuAtami-trip CLAUDE.md 變更（四十）做。
 
+## 預算（2026-10-13）
+使用者要求「花費只有登入的成員看得到，管理人可以編輯每一項的金額與計算方式」。原本行程網站的公開花費頁（`COST`）整個搬過來。
+- 分頁順序：**預算**／記帳／結算／推薦（嵌入時；獨立開時叫餐廳）／成員。路由 `#/t/ID/budget`。
+- 資料 `trips/{id}/budget/{auto}`：`{g 分組, name, note, amt(null＝未知、0＝免費), cur 'NT'|'JPY', mode, rooms, approx, opt, order, by, at}`；
+  `mode`：`total` 總價 ÷ 人數、`pp` 每人單價 × 人數、`room` 每間 × 間數 ÷ 人數（使用者選的三種；沒有「只算部分人」）。
+  人數＝`trips/{id}.ppl`（**主辦人設定**，預設 4；不是成員數）。`opt` 是選項，去了才算、不計入合計。
+- 權限：`budget` 成員可讀、只有主辦人可寫；`ppl` 寫在 trip 文件，原規則本來就只准主辦人改 rate 以外的欄位。
+  預算讀不到（規則沒更新）時只影響預算頁（`cur.bErr`），不會鎖住整個工具。
+- 合計：日圓與台幣分開加總，另用 trip 的匯率換算「約合台幣」。分組固定順序 `BG`，自訂分組排在後面。
+- **匯入**：預算是空的時候，主辦人看到「匯入行程網站原本的預估」，讀 `seeds/<行程ID>.json`（`{ppl, items}`），逐筆 `add`。
+  `seeds/IzuAtami-trip.json` 是 2026-10-13 從行程網站 `COST` 轉出來的 41 項（grp／car → total、其餘 → pp、駕照譯本改 total）。
+  **這個檔是公開的**（GitHub Pages），使用者匯入後要刪掉。
+- 驗證：IzuAtami 對話 scratchpad `tt/bud.js`（匯入、Airbnb 3,044／12,176、改人數重算、每間×間數、留空＝未知、刪除、成員唯讀、非成員擋、嵌入無溢出）、
+  `tt/emb3.js`（行程網站嵌入）；`t1.js` 的分頁位置因為多了預算往後挪一格。
+
 ## localStorage
 `tt-mock`、`tt-mock-me`（只有模擬模式）。Firebase 自己用 IndexedDB 存離線快取。同網域其他網站用 `izu-`、`hub-` 等前綴，不衝突。
 

@@ -59,6 +59,12 @@ service cloud.firestore {
         allow delete: if isMember(t) && (resource.data.by == request.auth.uid || isOwner(t));
       }
 
+      // 預算（出發前的預估）：成員看得到，只有主辦人能改
+      match /budget/{b} {
+        allow read: if isMember(t);
+        allow write: if isOwner(t);
+      }
+
       // 已付的轉帳
       match /settles/{s} {
         allow read: if isMember(t);

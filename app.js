@@ -80,18 +80,19 @@ function closeTrip() { if (cur) (cur.unsub || []).forEach(f => { try { f(); } ca
 function openTrip(id) {
   if (cur && cur.id === id) return;
   closeTrip();
-  cur = { id, trip: null, members: [], expenses: [], settles: [], restos: [], unsub: [], err: null, loaded: false };
+  cur = { id, trip: null, members: [], expenses: [], settles: [], restos: [], budget: [], unsub: [], err: null, loaded: false };
   const c = cur, fail = e => { if (c !== cur) return; c.err = e; render(); };
   c.unsub.push(api.watchTrip(id, t => { if (c !== cur) return; c.trip = t; c.loaded = true; render(); }, fail));
-  for (const sub of ['members', 'expenses', 'settles', 'restos'])
-    c.unsub.push(api.watch(id, sub, rows => { if (c !== cur) return; c[sub] = rows; render(); }, fail));
+  for (const sub of ['members', 'expenses', 'settles', 'restos', 'budget'])
+    c.unsub.push(api.watch(id, sub, rows => { if (c !== cur) return; c[sub] = rows; if (sub === 'budget') c.bErr = null; render(); },
+      sub === 'budget' ? e => { if (c !== cur) return; c.bErr = e; render(); } : fail));   // 預算讀不到（規則還沒更新）只影響預算頁
 }
 
 /* ───────── 畫面 ───────── */
 const app = () => $('#app');
 const testBar = () => EMBED ? '' : `<div class="test">測試版${MOCK ? '（模擬資料）' : ''}・不影響正式行程網站</div>`;
 function tabs(on) {
-  const T = [['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['resto', '🍽', EMBED ? '推薦' : '餐廳'], ['mem', '👥', '成員']];
+  const T = [['budget', '📋', '預算'], ['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['resto', '🍽', EMBED ? '推薦' : '餐廳'], ['mem', '👥', '成員']];
   return `<nav class="tabs">${T.map(([k, i, t]) => `<a href="#/t/${encodeURIComponent(cur.id)}/${k}" class="${k === on ? 'on' : ''}"><i>${i}</i>${t}</a>`).join('')}</nav>`;
 }
 function head(title) {
@@ -113,7 +114,7 @@ function render() {
   if (!cur.loaded) return app().innerHTML = testBar() + '<div class="hero"><p>讀取中…</p></div>';
   if (!cur.trip) return app().innerHTML = testBar() + `<div class="hero"><h1 class="cap">找不到這趟</h1><p>可能還沒建立。</p>${EMBED ? '' : '<a class="btn s" href="#/">回我的行程</a>'}</div>`;
   const p = route.page;
-  app().innerHTML = testBar() + ({ exp: pExp, settle: pSettle, resto: pResto, mem: pMem }[p] || pExp)() + tabs(p);
+  app().innerHTML = testBar() + ({ budget: pBudget, exp: pExp, settle: pSettle, resto: pResto, mem: pMem }[p] || pExp)() + tabs(p);
   if (route.add && p === 'resto') { route.add = false; history.replaceState(null, '', location.pathname + location.search + '#/t/' + encodeURIComponent(cur.id) + '/resto'); RF = null; openResto(); }
 }
 
@@ -232,7 +233,7 @@ async function saveExp() {
 }
 // 寫入不等伺服器回應（離線時會一直等），失敗才跳提示
 function bg(p) { Promise.resolve(p).catch(e => { toast(errMsg(e)); console.error(e); }); }
-function closeSheet() { $('#dim').hidden = true; F = null; RF = null; }
+function closeSheet() { $('#dim').hidden = true; F = null; RF = null; if (B) B.f = null; }
 
 /* 結算 */
 function pSettle() {
@@ -257,6 +258,78 @@ function csv() {
   const blob = new Blob(['﻿' + rows.map(r => r.map(q).join(',')).join('\n')], { type: 'text/csv' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = cur.trip.title + '-記帳.csv'; a.click();
 }
+
+/* 預算（出發前的預估花費）：只有成員看得到，只有主辦人能改。
+   每項 {g 分組, name, note, amt(null＝未知), cur 'NT'|'JPY', mode, rooms, approx, opt(選項不計入), order}
+   mode：total 總價÷人數、pp 每人單價×人數、room 每間×間數÷人數。人數＝trip.ppl（主辦人設定，預設 4）。 */
+const BG = ['機票', '住宿', '交通', '門票・體驗', '餐飲', '其他', '選項'];
+const BMODE = { total: '總價 ÷ 人數', pp: '每人單價 × 人數', room: '每間 × 間數 ÷ 人數' };
+let B = null;
+const pplOf = () => Math.max(1, +(cur.trip && cur.trip.ppl) || 4);
+function bPer(it) { const v = it.amt; if (v == null || v === '') return null; const n = pplOf(); return it.mode === 'pp' ? +v : it.mode === 'room' ? v * (+it.rooms || 1) / n : v / n; }
+function bAll(it) { const v = it.amt; if (v == null || v === '') return null; const n = pplOf(); return it.mode === 'pp' ? v * n : it.mode === 'room' ? v * (+it.rooms || 1) : +v; }
+const bMoney = (v, c) => v == null ? '' : money(v, c === 'NT' ? 'TWD' : 'JPY');
+function bHow(it) { const n = pplOf(); return it.mode === 'pp' ? `每人價 × ${n} 人` : it.mode === 'room' ? `每間 × ${+it.rooms || 1} 間 ÷ ${n} 人` : `總價 ÷ ${n} 人`; }
+function bSum(list) { const per = { NT: 0, JPY: 0 }, all = { NT: 0, JPY: 0 }; let u = 0; for (const it of list) { const p = bPer(it); if (p == null) { u++; continue; } per[it.cur] += p; all[it.cur] += bAll(it); } return { per, all, u }; }
+function bTxt(o) { const t = []; if (o.NT) t.push(nt(o.NT)); if (o.JPY) t.push(yen(o.JPY)); return t.join(' ＋ ') || '—'; }
+function pBudget() {
+  const own = isOwner(), L = (cur.budget || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)), n = pplOf(), rate = +cur.trip.rate || 4.8;
+  let h = head('預算');
+  if (cur.bErr) return h + `<div class="empty">預算還讀不到。<br>${own ? '請到 Firebase 主控台把最新的 firestore.rules 貼上並發布（多了「預算」的權限）。' : '主辦人還在設定，晚點再來看。'}</div>`;
+  h += `<div class="rate"><span>同行人數</span>${own ? `<span class="ppl"><button data-act="ppl" data-d="-1">−</button><b>${n} 人</b><button data-act="ppl" data-d="1">＋</button></span>` : `<b>${n} 人</b>`}</div>`;
+  if (!L.length) return h + (own ? `<div class="empty">還沒有預算項目。<br><button class="btn" data-act="bimport" id="bimp" hidden>匯入行程網站原本的預估</button><button class="btn s" data-act="badd">＋ 自己新增一項</button></div>` : `<div class="empty">主辦人還沒填預算。</div>`) + (own ? (setTimeout(bSeedCheck, 0), '') : '');
+  const S = bSum(L.filter(x => !x.opt));
+  const perNT = S.per.NT + S.per.JPY / rate, allNT = S.all.NT + S.all.JPY / rate;
+  h += `<div class="sum"><div style="display:flex;justify-content:space-between;gap:10px"><div><div class="k">每人合計（已知）</div><div class="v">${bTxt(S.per)}</div><div class="k" style="margin-top:2px">約合 ${nt(perNT)}</div></div><div style="text-align:right"><div class="k">全體 ${n} 人</div><div class="v" style="font-size:17px">${bTxt(S.all)}</div><div class="k" style="margin-top:2px">約合 ${nt(allNT)}</div></div></div>
+    <div class="k" style="margin-top:8px">${S.u ? S.u + ' 項金額未知・' : ''}日圓依匯率 1：${rate} 換算（結算頁可改）・選項不計入</div></div>`;
+  const groups = BG.concat([...new Set(L.map(x => x.g))].filter(g => !BG.includes(g)));
+  for (const g of groups) {
+    const G = L.filter(x => x.g === g); if (!G.length) continue;
+    h += `<div class="bg"><div class="bh"><b>${esc(g === '選項' ? '選項（去了才算，不計入合計）' : g)}</b><i>每人</i><i>全體</i></div>`;
+    for (const it of G) {
+      const unk = it.amt == null || it.amt === '', free = +it.amt === 0 && !unk, ap = it.approx ? '約 ' : '';
+      const cell = v => unk ? '<em class="unk">未知</em>' : free ? '<em>免費</em>' : `<em>${ap}${bMoney(v, it.cur)}</em>`;
+      h += `<${own ? 'button' : 'div'} class="br"${own ? ` data-act="bedit" data-id="${esc(it.id)}"` : ''}><div><b>${esc(it.name)}</b><span>${[esc(it.note), unk || free ? '' : bHow(it)].filter(Boolean).join('・')}</span></div>${cell(bPer(it))}${cell(bAll(it))}</${own ? 'button' : 'div'}>`;
+    }
+    if (g !== '選項') { const s2 = bSum(G); h += `<div class="br bt"><div><b>小計</b>${s2.u ? `<span>另有 ${s2.u} 項未知</span>` : ''}</div><em>${bTxt(s2.per)}</em><em>${bTxt(s2.all)}</em></div>`; }
+    h += `</div>`;
+  }
+  h += `<div class="small" style="margin:8px 20px">${own ? '點任一項可以修改金額與計算方式。' : '只有主辦人能修改預算。'}這頁是出發前的預估；實際花了多少請到「記帳」。</div>`;
+  if (own) h += `<button class="fab" data-act="badd">＋ 新增項目</button>`;
+  return h;
+}
+async function bSeedCheck() { const b = $('#bimp'); if (!b) return; try { const r = await fetch('seeds/' + encodeURIComponent(cur.id) + '.json', { cache: 'no-cache' }); if (!r.ok) return; const d = await r.json(); B = { seed: d }; b.hidden = false; b.textContent = `匯入行程網站原本的預估（${d.items.length} 項）`; } catch (e) {} }
+function openBudget(id) {
+  const it = id && (cur.budget || []).find(x => x.id === id);
+  B = Object.assign(B || {}, { f: it ? { ...it } : { g: '交通', name: '', note: '', amt: null, cur: 'JPY', mode: 'pp', rooms: 1, approx: false, opt: false, order: ((cur.budget || []).reduce((m, x) => Math.max(m, x.order || 0), 0)) + 10 } });
+  drawBudget();
+}
+function drawBudget() {
+  const f = B.f, groups = BG.concat([...new Set((cur.budget || []).map(x => x.g))].filter(g => !BG.includes(g)));
+  const n = pplOf(), prev = { ...f, amt: f.amt === '' ? null : f.amt };
+  $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">${f.id ? '修改預算項目' : '新增預算項目'}</b><button class="small" data-act="close">取消</button></div>
+  <div class="lab">分組</div><select class="inp" id="bG">${groups.map(g => `<option ${g === f.g ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select>
+  <div class="lab">名稱</div><input class="inp" id="bN" value="${esc(f.name)}" placeholder="例如：2/13–14 LiVEMAX 熱海">
+  <div class="lab">說明（選填）</div><input class="inp" id="bNote" value="${esc(f.note)}" placeholder="例如：2 晚・4 人一間">
+  <div class="lab">金額</div><div class="amt"><input id="bA" inputmode="decimal" placeholder="不知道就留空" value="${f.amt == null ? '' : esc(f.amt)}"><div class="cur"><button data-act="bcur" data-c="JPY" class="${f.cur === 'JPY' ? 'on' : ''}">日圓</button><button data-act="bcur" data-c="NT" class="${f.cur === 'NT' ? 'on' : ''}">台幣</button></div></div>
+  <div class="lab">計算方式</div><div class="split" style="grid-template-columns:repeat(3,1fr)">${Object.entries(BMODE).map(([k, t]) => `<button data-act="bmode" data-m="${k}" class="${f.mode === k ? 'on' : ''}">${t}</button>`).join('')}</div>
+  ${f.mode === 'room' ? `<div class="lab">間數</div><input class="inp" id="bR" inputmode="numeric" value="${esc(f.rooms || 1)}">` : ''}
+  <div class="small" style="margin-top:8px" id="bPrev">${bPrevTxt(prev, n)}</div>
+  <label class="ck"><input type="checkbox" id="bAp" ${f.approx ? 'checked' : ''}> 金額是估的（顯示「約」）</label>
+  <label class="ck"><input type="checkbox" id="bOpt" ${f.opt ? 'checked' : ''}> 選項，去了才算（不計入合計）</label>
+  <div class="err" id="berr"></div><button class="btn" data-act="bsave">存檔</button>${f.id ? '<button class="btn s" data-act="bdel">刪除這項</button>' : ''}`;
+  $('#dim').hidden = false;
+  $('#sheet').oninput = () => { readBudget(); const p = $('#bPrev'); if (p) p.innerHTML = bPrevTxt(B.f, pplOf()); };
+}
+function bPrevTxt(f, n) { const pp = bPer(f), aa = bAll(f); if (pp == null) return `同行 ${n} 人・金額留空會顯示「未知」`; return `同行 ${n} 人 → 每人 <b>${bMoney(pp, f.cur)}</b>・全體 <b>${bMoney(aa, f.cur)}</b>`; }
+function readBudget() { const f = B.f, v = id => { const e = $(id); return e ? e.value : null; };
+  if ($('#bG')) f.g = v('#bG'); if ($('#bN')) f.name = v('#bN'); if ($('#bNote')) f.note = v('#bNote');
+  if ($('#bA')) { const a = v('#bA').replace(/[^\d.]/g, ''); f.amt = a === '' ? null : +a; }
+  if ($('#bR')) f.rooms = Math.max(1, +v('#bR').replace(/\D/g, '') || 1);
+  if ($('#bAp')) f.approx = $('#bAp').checked; if ($('#bOpt')) f.opt = $('#bOpt').checked; }
+function saveBudget() { readBudget(); const f = B.f; if (!f.name.trim()) return $('#berr').textContent = '請填名稱';
+  const data = { g: f.g, name: f.name.trim(), note: (f.note || '').trim(), amt: f.amt, cur: f.cur, mode: f.mode, rooms: f.mode === 'room' ? (+f.rooms || 1) : 1, approx: !!f.approx, opt: !!f.opt, order: f.order || 0, by: me.uid, at: Date.now() };
+  bg(f.id ? api.set(cur.id, 'budget', f.id, data) : api.add(cur.id, 'budget', data)); closeSheet(); toast('已存檔'); }
 
 /* 餐廳 */
 let RTAB = 'pending', RF = null;
@@ -375,6 +448,20 @@ document.addEventListener('click', async ev => {
       if (a === 'save') return await saveExp();
       if (a === 'del') { if (!confirm('確定刪除這筆？')) return; bg(api.remove(cur.id, 'expenses', F.id)); closeSheet(); return toast('已刪除'); }
     }
+    if (a === 'ppl') { const v = Math.max(1, Math.min(20, pplOf() + (+el.dataset.d))); bg(api.updateTrip(cur.id, { ppl: v })); return; }
+    if (a === 'badd') return openBudget();
+    if (a === 'bedit') return openBudget(el.dataset.id);
+    if (B && B.f && ['bcur', 'bmode', 'bsave', 'bdel'].includes(a)) {
+      readBudget();
+      if (a === 'bcur') { B.f.cur = el.dataset.c; return drawBudget(); }
+      if (a === 'bmode') { B.f.mode = el.dataset.m; return drawBudget(); }
+      if (a === 'bsave') return saveBudget();
+      if (a === 'bdel') { if (!confirm('確定刪除這項？')) return; bg(api.remove(cur.id, 'budget', B.f.id)); closeSheet(); return toast('已刪除'); }
+    }
+    if (a === 'bimport') { const d = B && B.seed; if (!d) return; el.disabled = true; el.textContent = '匯入中…';
+      if (d.ppl && !cur.trip.ppl) await api.updateTrip(cur.id, { ppl: d.ppl });
+      for (const it of d.items) await api.add(cur.id, 'budget', { ...it, by: me.uid, at: Date.now() });
+      return toast(`已匯入 ${d.items.length} 項`); }
     if (a === 'rate') { const v = +$('#rate').value; if (!(v > 0)) return toast('匯率要大於 0'); await api.updateTrip(cur.id, { rate: v }); return toast('匯率已更新'); }
     if (a === 'paid') { bg(api.add(cur.id, 'settles', { from: el.dataset.f, to: el.dataset.t, amount: +el.dataset.a, at: Date.now(), by: me.uid })); return toast('已記成一筆轉帳'); }
     if (a === 'unpaid') { bg(api.remove(cur.id, 'settles', el.dataset.id)); return; }
