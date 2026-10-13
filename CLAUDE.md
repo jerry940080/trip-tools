@@ -60,7 +60,7 @@ trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending
 - 合計：日圓與台幣分開加總，另用 trip 的匯率換算「約合台幣」。分組固定順序 `BG`，自訂分組排在後面。
 - **匯入**：預算是空的時候，主辦人看到「匯入行程網站原本的預估」，讀 `seeds/<行程ID>.json`（`{ppl, items}`），逐筆 `add`。
   `seeds/IzuAtami-trip.json` 是 2026-10-13 從行程網站 `COST` 轉出來的 41 項（grp／car → total、其餘 → pp、駕照譯本改 total）。
-  **這個檔是公開的**（GitHub Pages），使用者匯入後要刪掉。
+  **這個檔是公開的**（GitHub Pages）；使用者 2026-10-13 匯入完成後已刪除（之後要匯入別的行程，再放一份 `seeds/<行程ID>.json`，匯入完就刪）。
 - 驗證：IzuAtami 對話 scratchpad `tt/bud.js`（匯入、Airbnb 3,044／12,176、改人數重算、每間×間數、留空＝未知、刪除、成員唯讀、非成員擋、嵌入無溢出）、
   `tt/emb3.js`（行程網站嵌入）；`t1.js` 的分頁位置因為多了預算往後挪一格。
 
