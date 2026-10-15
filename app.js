@@ -185,16 +185,27 @@ let F = null;
 function openExp(id, pre) {
   const L = memberList(); const D = days(cur.trip); const t = todayISO();
   const e = id && (cur.expenses || []).find(x => x.id === id);
-  F = e ? { id, date: e.date, dates: eDates(e), title: e.title, icon: e.icon || '🧾', amount: String(e.amount), cur: e.cur, payer: e.payer, mode: e.mode, shares: { ...e.shares }, by: e.by, bg: eGroup(e), bid: bItem(e) ? e.bid : '' }
+  F = e ? { id, date: e.date, dates: eDates(e), title: e.title, icon: e.icon || '🧾', amount: String(e.amount), cur: e.cur, payer: e.payer, mode: e.mode, shares: { ...e.shares }, by: e.by, bg: eGroup(e), bid: bItem(e) ? bItem(e).id : '' }
     : { date: D.includes(t) ? t : (D[0] || t), dates: [D.includes(t) ? t : (D[0] || t)], title: '', icon: '🍽', amount: '', cur: 'JPY', payer: me.uid, mode: 'equal', shares: Object.fromEntries(L.map(m => [m.uid, 1])), bg: '', bid: '' };
   if (!e && pre) { Object.assign(F, pre); if (pre.bg && !pre.icon) F.icon = GICO[pre.bg] || F.icon; }
   drawExp();
 }
 // 記帳 ↔ 預算：每筆記帳存 bg（分類）＋ bid（預算項目 id，空＝「其他（只選分類）」）
 const GICO = { 機票: '✈', 住宿: '🏨', 交通: '🚆', '門票・體驗': '🎫', 餐飲: '🍽', 其他: '💴' };
-const bItem = e => e && e.bid ? (cur.budget || []).find(x => x.id === e.bid) || null : null;
-const eGroup = e => { const it = bItem(e); return it ? it.g : (e && e.bg) || ''; };
-function eLabel(e) { const it = bItem(e); return it ? `${it.g}・${it.name}` : e.bg ? `${e.bg}・其他` : ''; }
+// 沒選過項目的記帳（舊資料）自動推：分類看圖示，項目看日期（預算名稱開頭的「2/13–14」包含記帳的第一天），或該分類只有一項
+const ICOG = { '✈': '機票', '🏨': '住宿', '🚆': '交通', '🚗': '交通', '🚕': '交通', '🎫': '門票・體驗', '♨': '門票・體驗', '🍽': '餐飲', '🍣': '餐飲', '🍢': '餐飲', '🍜': '餐飲', '☕': '餐飲', '🍓': '餐飲', '🛍': '其他', '💴': '其他' };
+function bRange(it) { const m = /(\d{1,2})\/(\d{1,2})/.exec(it.name || ''); if (!m) return null; const y = (cur.trip.start || '2027').slice(0, 4), a = `${y}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`; return [a, dNext(a, Math.max(1, bNights(it)) - 1)]; }
+function bGuess(e) {
+  const g = e.bg || ICOG[e.icon] || ''; if (!g) return { g: '', it: null };
+  const L = (cur.budget || []).filter(x => x.g === g), d = e.date;
+  let it = L.find(x => { const r = bRange(x); return r && d >= r[0] && d <= r[1]; }) || null;
+  if (!it && !e.bg && L.filter(x => !x.opt).length === 1) it = L.find(x => !x.opt);
+  return { g, it };
+}
+const bItem = e => { if (!e) return null; if (e.bid) return (cur.budget || []).find(x => x.id === e.bid) || null; return e.bg && e.bid === '' ? null : bGuess(e).it; };   // bid === ''：使用者選了「其他」，不再自動推
+const eGroup = e => { const it = bItem(e); return it ? it.g : (e && (e.bg || (e.bid === undefined ? ICOG[e.icon] : ''))) || ''; };
+const eAuto = e => e && !e.bid && e.bid !== '' && !!bItem(e);
+function eLabel(e) { const it = bItem(e), g = eGroup(e); return it ? `${it.g}・${it.name}` : g ? `${g}・其他` : ''; }
 const bGroups = () => BG.concat([...new Set((cur.budget || []).map(x => x.g))].filter(g => !BG.includes(g)));
 // 主辦人新增時可以切「實際花了／預計要花」；預計＝預算項目，不用選誰付
 const kindSeg = k => !isOwner() ? '' : `<div class="split k2"><button data-act="kind" data-k="real" class="${k === 'real' ? 'on' : ''}">🧾 實際花了</button><button data-act="kind" data-k="plan" class="${k === 'plan' ? 'on' : ''}">📋 預計要花</button></div>`;
@@ -342,7 +353,7 @@ function bAllNT(it) { const v = bAll(it); return v == null ? null : it.cur === '
 function bActual() {
   const c = calc(), byId = {}, loose = {};
   for (const e of cur.expenses || []) { const v = c.toNT(+e.amount || 0, e.cur), it = bItem(e);
-    if (it) { const o = byId[it.id] = byId[it.id] || { v: 0, n: 0 }; o.v += v; o.n++; } else (loose[e.bg || ''] = loose[e.bg || ''] || []).push(e); }
+    if (it) { const o = byId[it.id] = byId[it.id] || { v: 0, n: 0, L: [] }; o.v += v; o.n++; o.L.push(e); } else { const g = eGroup(e); (loose[g] = loose[g] || []).push(e); } }
   return { byId, loose, toNT: c.toNT, total: c.total };
 }
 function bTxt(o) { const t = []; if (o.NT) t.push(nt(o.NT)); if (o.JPY) t.push(yen(o.JPY)); return t.join(' ＋ ') || '—'; }
@@ -414,6 +425,7 @@ function pBudget() {
       const act = av ? `<small class="act${ovr ? ' over' : ' ok'}">已花 ${nt(av)}${ovr ? '' : pv != null ? ' ✓' : ''}</small>${ovr ? `<small class="act over">超出 ${nt(av - pv)}</small>` : ''}${an > 1 ? `<small>${an} 筆</small>` : ''}` : '<small class="act no">還沒記</small>';
       const right = (unk ? '<span class="unk">未知</span>' : free ? '<b>免費</b>' : `<b>${ap}${bMoney(bPer(it), it.cur)}</b><small>全體 ${bMoney(bAll(it), it.cur)}</small>`) + act;
       B += `<${own ? 'button' : 'div'} class="bit"${own ? ` data-act="bedit" data-id="${esc(it.id)}"` : ''}><div><b>${esc(it.name)}</b>${meta ? `<span>${meta}</span>` : ''}${nTxt ? `<em>${nTxt}</em>` : ''}</div><div class="r">${right}</div></${own ? 'button' : 'div'}>`;
+      B += ((AC.byId[it.id] || {}).L || []).map(e => bRec(e, AC)).join('');
     }
     if (on) B += LZ.map(e => bLoose(e, AC)).join('');
     B += `</div>`;
@@ -428,6 +440,8 @@ function pBudget() {
 }
 // 沒對到項目的記帳：點了打開那一筆，補選花費項目
 function bLoose(e, AC) { return `<button class="bit bx" data-act="edit" data-id="${esc(e.id)}"><div><b>（沒對到項目）${esc(e.title)}</b><span>${esc(dTxt(eDates(e), false))}・${esc(mInfo(e.payer).name)} 付</span></div><div class="r"><small class="act">已花 ${nt(AC.toNT(+e.amount || 0, e.cur))}</small></div></button>`; }
+// 對到項目的每一筆記帳，列在那一項下面（點了打開那一筆）
+function bRec(e, AC) { const v = AC.toNT(+e.amount || 0, e.cur); return `<button class="brec" data-act="edit" data-id="${esc(e.id)}"><i>${esc(e.icon || '🧾')}</i><div><b>${esc(e.title)}</b><span>記帳・${esc(dTxt(eDates(e), false))}・${esc(mInfo(e.payer).name)} 付${eAuto(e) ? '・自動對到' : ''}</span></div><em>${e.cur === 'TWD' ? nt(v) : `${yen(+e.amount)}<small>≈ ${nt(v)}</small>`}</em></button>`; }
 async function bSeedCheck() { const b = $('#bimp'); if (!b) return; try { const r = await fetch('seeds/' + encodeURIComponent(cur.id) + '.json', { cache: 'no-cache' }); if (!r.ok) return; const d = await r.json(); B = { seed: d }; b.hidden = false; b.textContent = `匯入行程網站原本的預估（${d.items.length} 項）`; } catch (e) {} }
 function openBudget(id, pre) {
   const it = id && (cur.budget || []).find(x => x.id === id);
