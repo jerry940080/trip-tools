@@ -338,17 +338,21 @@ const BG = ['機票', '住宿', '交通', '門票・體驗', '餐飲', '其他',
 const BMODE = { total: '總價 ÷ 人數', pp: '每人單價 × 人數', room: '每間 × 間數 ÷ 人數' };
 let B = null;
 const pplOf = () => Math.max(1, +(cur.trip && cur.trip.ppl) || 4);
-function bPer(it) { const v = it.amt; if (v == null || v === '') return null; const n = pplOf(); return it.mode === 'pp' ? +v : it.mode === 'room' ? v * (+it.rooms || 1) / n : v / n; }
-function bAll(it) { const v = it.amt; if (v == null || v === '') return null; const n = pplOf(); return it.mode === 'pp' ? v * n : it.mode === 'room' ? v * (+it.rooms || 1) : +v; }
+// 人數：每一項自己填（ppl），沒填用行程的預設人數
+const bPpl = it => Math.max(1, +it.ppl || pplOf());
+function bPer(it) { const v = it.amt; if (v == null || v === '') return null; const n = bPpl(it); return it.mode === 'pp' ? +v : it.mode === 'room' ? v * (+it.rooms || 1) / n : v / n; }
+function bAll(it) { const v = it.amt; if (v == null || v === '') return null; const n = bPpl(it); return it.mode === 'pp' ? v * n : it.mode === 'room' ? v * (+it.rooms || 1) : +v; }
 const bMoney = (v, c) => v == null ? '' : money(v, c === 'NT' ? 'TWD' : 'JPY');
 // 晚數：有填 nights 用 nights；住宿組沒填時從說明裡的「N 晚」讀（舊資料也能顯示每人每晚）
 function bNights(it) { if (+it.nights > 0) return +it.nights; if (it.g !== '住宿') return 0; const m = /(\d+)\s*晚/.exec(it.note || ''); if (m) return +m[1];
   const r = /(\d{1,2})\/(\d{1,2})\s*[–\-～~]\s*(?:\d{1,2}\/)?(\d{1,2})/.exec(it.name || ''); if (r && +r[3] >= +r[2]) return +r[3] - +r[2] + 1; // 名稱「2/15–16」＝住 15、16 兩晚
   return /^\s*\d{1,2}\/\d{1,2}(?!\s*[–\-～~])/.test(it.name || '') ? 1 : 0; }
 function bNightTxt(it) { const p = bPer(it), n = bNights(it); return p != null && n > 0 && +it.amt !== 0 ? `每人每晚 ${bMoney(p / n, it.cur)}` : ''; }
-function bHow(it) { const n = pplOf(); return it.mode === 'pp' ? `每人價 × ${n} 人` : it.mode === 'room' ? `每間 × ${+it.rooms || 1} 間 ÷ ${n} 人` : `總價 ÷ ${n} 人`; }
+function bHow(it) { const n = bPpl(it); return it.mode === 'pp' ? `每人價 × ${n} 人` : it.mode === 'room' ? `每間 × ${+it.rooms || 1} 間 ÷ ${n} 人` : `總價 ÷ ${n} 人`; }
 function bSum(list) { const per = { NT: 0, JPY: 0 }, all = { NT: 0, JPY: 0 }; let u = 0; for (const it of list) { const p = bPer(it); if (p == null) { u++; continue; } per[it.cur] += p; all[it.cur] += bAll(it); } return { per, all, u }; }
 // 預計（全體、換成台幣）與實際（記帳）：實際依 bid 對到項目；對不到的依 bg 歸到分類的「（沒對到項目）」，沒分類的歸「未分類」
+function bPerNT(it) { const v = bPer(it); return v == null ? null : it.cur === 'NT' ? v : v / (+cur.trip.rate || 4.8); }
+const eN = e => e.mode === 'treat' ? 1 : Math.max(1, Object.keys(e.shares || {}).length);   // 這筆幾個人分
 function bAllNT(it) { const v = bAll(it); return v == null ? null : it.cur === 'NT' ? v : v / (+cur.trip.rate || 4.8); }
 function bActual() {
   const c = calc(), byId = {}, loose = {};
@@ -379,30 +383,37 @@ function pBudget() {
   const own = isOwner(), L = (cur.budget || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)), n = pplOf(), rate = +cur.trip.rate || 4.8;
   let h = head('花費預算');
   if (cur.bErr) return h + `<div class="empty">預算還讀不到。<br>${own ? '請到 Firebase 主控台把最新的 firestore.rules 貼上並發布（多了「預算」的權限）。' : '主辦人還在設定，晚點再來看。'}</div>`;
-  const rateH = `<div class="rate"><span>同行人數</span>${own ? `<span class="ppl"><button data-act="ppl" data-d="-1">−</button><b>${n} 人</b><button data-act="ppl" data-d="1">＋</button></span>` : `<b>${n} 人</b>`}</div>`;
+  const rateH = `<div class="rate"><span>預設人數<small style="display:block;font-size:11px;color:var(--mute)">新增項目先帶這個，每一項可以自己改</small></span>${own ? `<span class="ppl"><button data-act="ppl" data-d="-1">−</button><b>${n} 人</b><button data-act="ppl" data-d="1">＋</button></span>` : `<b>${n} 人</b>`}</div>`;
   if (!WIDE) h += rateH;
   if (!L.length) return h + (WIDE ? rateH : '') + (own ? `<div class="empty">還沒有預算項目。<br><button class="btn" data-act="bimport" id="bimp" hidden>匯入行程網站原本的預估</button><button class="btn s" data-act="badd">＋ 自己新增一項</button></div>` : `<div class="empty">主辦人還沒填預算。</div>`) + (own ? (setTimeout(bSeedCheck, 0), '') : '');
   // 有記帳的項目改用記帳（名稱、金額都照記的），預計金額不再顯示；沒記帳的才用預計
-  const AC = bActual(), recs = it => (AC.byId[it.id] || {}).L || [], aOf = it => (AC.byId[it.id] || {}).v || 0, lsum = g => (AC.loose[g] || []).reduce((s, e) => s + AC.toNT(+e.amount || 0, e.cur), 0);
-  const effAll = it => recs(it).length ? aOf(it) : bAllNT(it), incl = it => !it.opt || recs(it).length > 0;
+  // 每人＝每一項自己的人數：預計項目用它的「幾個人分」，記帳用那一筆實際分的人數
+  const AC = bActual(), recs = it => (AC.byId[it.id] || {}).L || [], aOf = it => (AC.byId[it.id] || {}).v || 0;
+  const rPer = e => AC.toNT(+e.amount || 0, e.cur) / eN(e), lz = g => AC.loose[g] || [];
+  const lsum = g => lz(g).reduce((s, e) => s + AC.toNT(+e.amount || 0, e.cur), 0), lper = g => lz(g).reduce((s, e) => s + rPer(e), 0);
+  const effAll = it => recs(it).length ? aOf(it) : bAllNT(it), effPer = it => recs(it).length ? recs(it).reduce((s, e) => s + rPer(e), 0) : bPerNT(it);
+  const incl = it => !it.opt || recs(it).length > 0;
   const gTot = g => L.filter(x => x.g === g && incl(x)).reduce((s, it) => s + (effAll(it) || 0), 0) + lsum(g);
-  const unk = L.filter(it => incl(it) && !recs(it).length && bAllNT(it) == null).length;
-  const AT = AC.total, T = L.filter(incl).reduce((s, it) => s + (effAll(it) || 0), 0) + Object.keys(AC.loose).reduce((s, g) => s + lsum(g), 0), pct = T ? AT / T * 100 : 0;
+  const gPer = g => L.filter(x => x.g === g && incl(x)).reduce((s, it) => s + (effPer(it) || 0), 0) + lper(g);
+  const unk = L.filter(it => incl(it) && !recs(it).length && bAllNT(it) == null).length, LG = Object.keys(AC.loose);
+  const AT = AC.total, T = L.filter(incl).reduce((s, it) => s + (effAll(it) || 0), 0) + LG.reduce((s, g) => s + lsum(g), 0), pct = T ? AT / T * 100 : 0;
+  const TP = L.filter(incl).reduce((s, it) => s + (effPer(it) || 0), 0) + LG.reduce((s, g) => s + lper(g), 0);
+  const AP = (cur.expenses || []).reduce((s, e) => s + rPer(e), 0);
   let A = WIDE ? rateH : '', B = '';
-  A += `<div class="sum bsum"><div class="k">每人大約要準備</div><div class="v">${nt(T / n)}</div>
-    <div class="k" style="margin-top:3px">全體 ${n} 人 約 ${nt(T)}${unk ? `・另有 ${unk} 項金額未知` : ''}</div></div>`;
+  A += `<div class="sum bsum"><div class="k">每人大約要準備</div><div class="v">${nt(TP)}</div>
+    <div class="k" style="margin-top:3px">每一項依各自的人數分・全體約 ${nt(T)}${unk ? `・另有 ${unk} 項金額未知` : ''}</div></div>`;
   A += `<div class="bprog"><div class="hd"><b>已記帳 ${nt(AT)}</b><span>／合計 ${nt(T)}</span></div>
     <div class="t"><i style="width:${Math.min(100, pct).toFixed(1)}%"></i></div>
-    <p>${Math.round(pct)}%・還沒記帳的預計 ${nt(Math.max(0, T - AT))}・每人約已花 ${nt(AT / n)}</p>
+    <p>${Math.round(pct)}%・還沒記帳的預計 ${nt(Math.max(0, T - AT))}・每人約已花 ${nt(AP)}</p>
     <p class="s">記過帳的項目改用記帳的名稱與金額，還沒記的才用預計。記帳時挑「花費項目」就會對到這裡。選項有記帳才算進合計。</p></div>`;
   const groups = BG.concat([...new Set(L.map(x => x.g).concat(Object.keys(AC.loose).filter(Boolean)))].filter(g => !BG.includes(g))).filter(g => L.some(x => x.g === g) || (AC.loose[g] || []).length);
   // 各類每人花費長條（台幣）
-  const gs = groups.filter(g => g !== '選項').map((g, i) => ({ g, v: gTot(g) / n, c: BCOL[i % BCOL.length] }));
+  const gs = groups.filter(g => g !== '選項').map((g, i) => ({ g, v: gPer(g), c: BCOL[i % BCOL.length] }));
   const mx = Math.max(1, ...gs.map(x => x.v));
   A += `<div class="bbars">${gs.map(x => `<div class="bb"><b>${esc(x.g)}</b><div class="t"><i style="width:${Math.max(x.v ? 3 : 0, x.v / mx * 100).toFixed(1)}%;background:${x.c}"></i></div><span>${x.v ? Math.round(x.v).toLocaleString('en-US') : '—'}</span></div>`).join('')}
     <div class="bbn">每人・台幣（日圓 ÷ ${rate}）・有記帳的用實際</div></div>`;
   // 每人每晚住宿（有記帳的用記帳金額與名稱）
-  const NB = bNightBars(L, rate, it => recs(it).length ? { v: aOf(it) / n, lab: recs(it)[0].title } : null);
+  const NB = bNightBars(L, rate, it => recs(it).length ? { v: effPer(it), lab: recs(it)[0].title } : null);
   if (NB.bars.length) {
     const nmx = Math.max(...NB.bars.map(x => x.v)), avg = NB.bars.reduce((a, x) => a + x.v, 0) / NB.bars.length, col = l => BCOL[NB.hotels.indexOf(l) % BCOL.length];
     const top = NB.bars.reduce((a, x) => x.v > a.v ? x : a, NB.bars[0]);
@@ -414,17 +425,17 @@ function pBudget() {
   // 明細：每類一張卡，點開才列項目
   for (const g of groups) {
     const G = L.filter(x => x.g === g), opt = g === '選項', on = bOpen(g), LZ = AC.loose[g] || [];
-    const gA = G.reduce((s, it) => s + aOf(it), 0) + lsum(g), left = G.filter(it => incl(it) && !recs(it).length), gU = left.filter(it => bAllNT(it) == null).length, gT = gTot(g);
+    const gA = G.reduce((s, it) => s + aOf(it), 0) + lsum(g), left = G.filter(it => incl(it) && !recs(it).length), gU = left.filter(it => bAllNT(it) == null).length, gT = gTot(g), gP = gPer(g);
     const sub = [];
     if (gA) sub.push(`<span class="ga">已記帳 ${nt(gA)}</span>`);
     if (left.length) sub.push(`${left.length} 項還沒記`); if (gU) sub.push(`${gU} 項未知`); if (opt) sub.push('去了才算');
     if (g === '住宿' && NB.bars.length) sub.push(`共 ${NB.bars.length} 晚`);
-    B += `<div class="bcard${opt ? ' opt' : ''}${on ? ' on' : ''}"><button class="bch" data-act="btog" data-g="${esc(g)}"><i>${BICO[g] || '•'}</i><div><b>${esc(g)}</b><small>${sub.join('・') || `${G.length} 項`}</small></div><div class="r">${gT ? nt(gT / n) : '—'}${gT ? `<small>全體 ${nt(gT)}</small>` : ''}</div><span class="ar">${on ? '⌄' : '›'}</span></button>`;
+    B += `<div class="bcard${opt ? ' opt' : ''}${on ? ' on' : ''}"><button class="bch" data-act="btog" data-g="${esc(g)}"><i>${BICO[g] || '•'}</i><div><b>${esc(g)}</b><small>${sub.join('・') || `${G.length} 項`}</small></div><div class="r">${gT ? nt(gP) : '—'}${gT ? `<small>全體 ${nt(gT)}</small>` : ''}</div><span class="ar">${on ? '⌄' : '›'}</span></button>`;
     if (on) for (const it of G) {
       const R = recs(it);
       if (R.length) {   // 記過帳：只列記的那幾筆
-        const ni = g === '住宿' ? bNights(it) : 0, pn = ni ? aOf(it) / n / ni : 0;
-        B += R.map((e, j) => bRow(e, AC, n, j === 0 && pn ? `每人每晚 ${nt(pn)}${R.length > 1 ? `（${R.length} 筆合計）` : ''}` : '')).join('');
+        const ni = g === '住宿' ? bNights(it) : 0, pn = ni ? effPer(it) / ni : 0;
+        B += R.map((e, j) => bRow(e, AC, j === 0 && pn ? `每人每晚 ${nt(pn)}${R.length > 1 ? `（${R.length} 筆合計）` : ''}` : '')).join('');
         continue;
       }
       const unk = it.amt == null || it.amt === '', free = +it.amt === 0 && !unk, ap = it.approx ? '約 ' : '', ni = bNights(it), nTxt = bNightTxt(it);
@@ -432,20 +443,20 @@ function pBudget() {
       const right = (unk ? '<span class="unk">未知</span>' : free ? '<b>免費</b>' : `<b>${ap}${bMoney(bPer(it), it.cur)}</b><small>全體 ${bMoney(bAll(it), it.cur)}</small>`) + '<small class="act no">預計・還沒記帳</small>';
       B += `<${own ? 'button' : 'div'} class="bit"${own ? ` data-act="bedit" data-id="${esc(it.id)}"` : ''}><div><b>${esc(it.name)}</b>${meta ? `<span>${meta}</span>` : ''}${nTxt ? `<em>${nTxt}</em>` : ''}</div><div class="r">${right}</div></${own ? 'button' : 'div'}>`;
     }
-    if (on) B += LZ.map(e => bRow(e, AC, n, '', true)).join('');
+    if (on) B += LZ.map(e => bRow(e, AC, '', true)).join('');
     B += `</div>`;
   }
   const UN = AC.loose[''] || [];
   if (UN.length) { const on = bOpen('未分類'), v = lsum('');
-    B += `<div class="bcard un${on ? ' on' : ''}"><button class="bch" data-act="btog" data-g="未分類"><i>❔</i><div><b>未分類</b><small>${UN.length} 筆記帳沒選花費項目・點一筆補上</small></div><div class="r">${nt(v / n)}<small>全體 ${nt(v)}</small></div><span class="ar">${on ? '⌄' : '›'}</span></button>${on ? UN.map(e => bRow(e, AC, n, '', true)).join('') : ''}</div>`; }
+    B += `<div class="bcard un${on ? ' on' : ''}"><button class="bch" data-act="btog" data-g="未分類"><i>❔</i><div><b>未分類</b><small>${UN.length} 筆記帳沒選花費項目・點一筆補上</small></div><div class="r">${nt(UN.reduce((s, e) => s + rPer(e), 0))}<small>全體 ${nt(v)}</small></div><span class="ar">${on ? '⌄' : '›'}</span></button>${on ? UN.map(e => bRow(e, AC, '', true)).join('') : ''}</div>`; }
   B += `<div class="small" style="margin:8px 20px">${own ? '點分類展開明細，點任一項可以修改金額與計算方式。' : '點分類展開明細；只有主辦人能修改預算。'}記過帳的項目點了會打開那一筆記帳。</div>`;
   h += cols(A, B);
   if (own && !WIDE) h += `<button class="fab" data-act="badd">＋ 新增項目</button>`;
   return h;
 }
 // 記帳那一筆當成花費的一列：名稱、金額照記的（loose＝沒對到預算項目）
-function bRow(e, AC, n, em, loose) { const v = AC.toNT(+e.amount || 0, e.cur);
-  return `<button class="bit br${loose ? ' bx' : ''}" data-act="edit" data-id="${esc(e.id)}"><div><b><i class="bri">${esc(e.icon || '🧾')}</i>${esc(e.title)}</b><span>${esc(dTxt(eDates(e), false))}・${esc(mInfo(e.payer).name)} 付・${loose ? '沒對到預算項目' : eAuto(e) ? '記帳（自動對到）' : '記帳'}</span>${em ? `<em>${em}</em>` : ''}</div><div class="r"><b>${nt(v / n)}</b><small>全體 ${e.cur === 'TWD' ? nt(v) : `${yen(+e.amount)}≈${nt(v)}`}</small><small class="act ok">✓ 已記帳</small></div></button>`; }
+function bRow(e, AC, em, loose) { const v = AC.toNT(+e.amount || 0, e.cur), n = eN(e);
+  return `<button class="bit br${loose ? ' bx' : ''}" data-act="edit" data-id="${esc(e.id)}"><div><b><i class="bri">${esc(e.icon || '🧾')}</i>${esc(e.title)}</b><span>${esc(dTxt(eDates(e), false))}・${esc(mInfo(e.payer).name)} 付・${n} 人分・${loose ? '沒對到預算項目' : eAuto(e) ? '記帳（自動對到）' : '記帳'}</span>${em ? `<em>${em}</em>` : ''}</div><div class="r"><b>${nt(v / n)}</b><small>全體 ${e.cur === 'TWD' ? nt(v) : `${yen(+e.amount)}≈${nt(v)}`}</small><small class="act ok">✓ 已記帳</small></div></button>`; }
 async function bSeedCheck() { const b = $('#bimp'); if (!b) return; try { const r = await fetch('seeds/' + encodeURIComponent(cur.id) + '.json', { cache: 'no-cache' }); if (!r.ok) return; const d = await r.json(); B = { seed: d }; b.hidden = false; b.textContent = `匯入行程網站原本的預估（${d.items.length} 項）`; } catch (e) {} }
 function openBudget(id, pre) {
   const it = id && (cur.budget || []).find(x => x.id === id);
@@ -463,24 +474,26 @@ function drawBudget() {
   <div class="lab">住幾晚（住宿才填，用來算每人每晚）</div><input class="inp" id="bNi" inputmode="numeric" placeholder="不是住宿就留空" value="${f.nights ? esc(f.nights) : (f.g === '住宿' && bNights(f) ? bNights(f) : '')}">
   <div class="lab">金額</div><div class="amt"><input id="bA" inputmode="decimal" placeholder="不知道就留空" value="${f.amt == null ? '' : esc(f.amt)}"><div class="cur"><button data-act="bcur" data-c="JPY" class="${f.cur === 'JPY' ? 'on' : ''}">日圓</button><button data-act="bcur" data-c="NT" class="${f.cur === 'NT' ? 'on' : ''}">台幣</button></div></div>
   <div class="lab">計算方式</div><div class="split" style="grid-template-columns:repeat(3,1fr)">${Object.entries(BMODE).map(([k, t]) => `<button data-act="bmode" data-m="${k}" class="${f.mode === k ? 'on' : ''}">${t}</button>`).join('')}</div>
+  <div class="lab">幾個人分<span class="small" style="font-weight:500;margin-left:6px">這一項要分給幾個人</span></div><input class="inp" id="bP" inputmode="numeric" value="${esc(bPpl(f))}">
   ${f.mode === 'room' ? `<div class="lab">間數</div><input class="inp" id="bR" inputmode="numeric" value="${esc(f.rooms || 1)}">` : ''}
-  <div class="small" style="margin-top:8px" id="bPrev">${bPrevTxt(prev, n)}</div>
+  <div class="small" style="margin-top:8px" id="bPrev">${bPrevTxt(prev)}</div>
   <label class="ck"><input type="checkbox" id="bAp" ${f.approx ? 'checked' : ''}> 金額是估的（顯示「約」）</label>
   <label class="ck"><input type="checkbox" id="bOpt" ${f.opt ? 'checked' : ''}> 選項，去了才算（不計入合計）</label>
   <div class="err" id="berr"></div><button class="btn" data-act="bsave">存檔</button>${f.id ? '<button class="btn s" data-act="breal">🧾 記成實際（記一筆）</button><button class="btn s" data-act="bdel">刪除這項</button>' : ''}`;
   $('#dim').hidden = false;
-  $('#sheet').oninput = () => { readBudget(); const p = $('#bPrev'); if (p) p.innerHTML = bPrevTxt(B.f, pplOf()); };
+  $('#sheet').oninput = () => { readBudget(); const p = $('#bPrev'); if (p) p.innerHTML = bPrevTxt(B.f); };
   $('#sheet').onchange = null;
 }
-function bPrevTxt(f, n) { const pp = bPer(f), aa = bAll(f), ni = bNightTxt(f); if (pp == null) return `同行 ${n} 人・金額留空會顯示「未知」`; if (ni) return `同行 ${n} 人 → 每人 <b>${bMoney(pp, f.cur)}</b>・全體 <b>${bMoney(aa, f.cur)}</b>・<b>${ni}</b>`; return `同行 ${n} 人 → 每人 <b>${bMoney(pp, f.cur)}</b>・全體 <b>${bMoney(aa, f.cur)}</b>`; }
+function bPrevTxt(f) { const n = bPpl(f); const pp = bPer(f), aa = bAll(f), ni = bNightTxt(f); if (pp == null) return `${n} 人分・金額留空會顯示「未知」`; if (ni) return `${n} 人分 → 每人 <b>${bMoney(pp, f.cur)}</b>・全體 <b>${bMoney(aa, f.cur)}</b>・<b>${ni}</b>`; return `${n} 人分 → 每人 <b>${bMoney(pp, f.cur)}</b>・全體 <b>${bMoney(aa, f.cur)}</b>`; }
 function readBudget() { const f = B.f, v = id => { const e = $(id); return e ? e.value : null; };
   if ($('#bG')) f.g = v('#bG'); if ($('#bN')) f.name = v('#bN'); if ($('#bNote')) f.note = v('#bNote');
   if ($('#bA')) { const a = v('#bA').replace(/[^\d.]/g, ''); f.amt = a === '' ? null : +a; }
+  if ($('#bP')) f.ppl = Math.max(1, +v('#bP').replace(/\D/g, '') || pplOf());
   if ($('#bR')) f.rooms = Math.max(1, +v('#bR').replace(/\D/g, '') || 1);
   if ($('#bNi')) { const x = v('#bNi').replace(/\D/g, ''); f.nights = x ? +x : 0; }
   if ($('#bAp')) f.approx = $('#bAp').checked; if ($('#bOpt')) f.opt = $('#bOpt').checked; }
 function saveBudget() { readBudget(); const f = B.f; if (!f.name.trim()) return $('#berr').textContent = '請填名稱';
-  const data = { g: f.g, name: f.name.trim(), note: (f.note || '').trim(), nights: +f.nights || 0, amt: f.amt, cur: f.cur, mode: f.mode, rooms: f.mode === 'room' ? (+f.rooms || 1) : 1, approx: !!f.approx, opt: !!f.opt, order: f.order || 0, by: me.uid, at: Date.now() };
+  const data = { g: f.g, name: f.name.trim(), note: (f.note || '').trim(), nights: +f.nights || 0, amt: f.amt, cur: f.cur, mode: f.mode, ppl: bPpl(f), rooms: f.mode === 'room' ? (+f.rooms || 1) : 1, approx: !!f.approx, opt: !!f.opt, order: f.order || 0, by: me.uid, at: Date.now() };
   bg(f.id ? api.set(cur.id, 'budget', f.id, data) : api.add(cur.id, 'budget', data)); closeSheet(); toast('已存檔'); }
 
 /* 餐廳 */
@@ -592,7 +605,7 @@ document.addEventListener('click', async ev => {
     if (a === 'edit') return openExp(el.dataset.id);
     if (a === 'close') return closeSheet();
     if (a === 'kind' && isOwner()) {   // 記一筆 ↔ 新增預算項目，帶著已填的名稱、金額、分類過去
-      if (el.dataset.k === 'plan' && F && !F.id) { readExp(); const p = { name: F.title, amt: F.amount === '' ? null : +F.amount, cur: F.cur === 'TWD' ? 'NT' : 'JPY', mode: 'total', g: F.bg || '其他' };
+      if (el.dataset.k === 'plan' && F && !F.id) { readExp(); const p = { name: F.title, amt: F.amount === '' ? null : +F.amount, cur: F.cur === 'TWD' ? 'NT' : 'JPY', mode: 'total', g: F.bg || '其他', ppl: F.mode === 'treat' ? 1 : Math.max(1, Object.keys(F.shares).length) };
         if (p.g === '住宿' && F.dates.length) p.nights = F.dates.length; closeSheet(); return openBudget(null, p); }
       if (el.dataset.k === 'real' && B && B.f && !B.f.id) { readBudget(); const f = B.f, v = bAll(f), p = { title: f.name || '', amount: v == null ? '' : String(Math.round(v)), cur: f.cur === 'NT' ? 'TWD' : 'JPY', bg: f.g };
         closeSheet(); return openExp(null, p); }
