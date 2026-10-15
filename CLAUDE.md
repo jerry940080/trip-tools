@@ -23,7 +23,7 @@ users/{uid}                 {trips:{tripId:{title,start,end,color,cover,role}}} 
 trips/{id}                  {title,start,end,color,cover,owner,rate,createdAt}     ← id＝行程 repo 名稱
 trips/{id}/private/invite   {key,expires(Timestamp)}                               ← 只有主辦人能讀寫
 trips/{id}/members/{uid}    {uid,name,photo,email,role:'owner'|'member',key,joinedAt}
-trips/{id}/expenses/{auto}  {date(第一天),dates(勾選的日期陣列),title,icon,amount,cur:'JPY'|'TWD',payer,mode:'equal'|'ratio'|'amount'|'treat',shares:{uid:份數或金額},by,at}
+trips/{id}/expenses/{auto}  {date(第一天),dates(勾選的日期陣列),title,icon,amount,cur:'JPY'|'TWD',payer,mode:'equal'|'ratio'|'amount'|'treat',shares:{uid:份數或金額},bg(分類),bid(預算項目 id，空＝其他),by,at}
 trips/{id}/settles/{auto}   {from,to,amount(台幣),at,by}
 trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending'|'in'|'no',at,decidedAt}
 ```
@@ -93,6 +93,24 @@ trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending
 - wide 沒有懸浮鈕（記一筆、新增項目改成欄內按鈕）；花費明細的分組**預設全部展開**（`bOpen()`，`BOPEN` 在 wide 時記的是「收起來」）；底部表單改成置中彈窗（`.dim{align-items:center}`、沒有拖曳把手）。
 - iframe 高度由行程網站算成「畫面剩下的高度」，整頁不捲、只在 iframe 裡捲，所以彈窗會在畫面中間。
 
+## 記帳 ↔ 花費同步（2026-10-15）
+使用者：「讓記帳的內容可以反映在花費上，記帳時挑選是什麼項目；花費記帳只有登入的人看；加上預計的花費項目，預計的不用選誰先付」。使用者選的三個方向：
+挑花費裡的項目（分類 → 項目，另有「其他（只選分類）」）／記一筆多一個「實際花了／預計要花」切換、**只有主辦人能記預計**／每一項都並列預計與實際＋總計。
+- **記一筆**多一段「花費項目」：分類膠囊（`bGroups()`＝`BG`＋預算裡的自訂分組）→ 選了分類才出現項目下拉 `#fBid`（每項標「預計 NT x・已記 NT y」，第一個選項「其他（只選分類，不對到項目）」）。
+  **分類必填**（`saveExp` 擋「請選這筆是哪一類花費」；改舊資料時也要補選）。選項目且名稱空著 → 名稱自動帶項目名；選分類時新增的那筆圖示換成 `GICO`。
+  存成 `bg`＋`bid`（`bid` 空字串＝其他）。項目被刪掉的記帳：`bItem(e)` 找不到 → 視為只有分類（`eGroup`）。列表每筆多一個綠色膠囊「分類・項目」（`eLabel`）。
+- **實際／預計切換**（`kindSeg`，主辦人新增時才有；修改既有的不顯示）：切到預計＝換成「新增預算項目」表單（`openBudget(null,pre)`），帶過去名稱、金額、幣別、分類，計算方式預設「總價 ÷ 人數」，
+  住宿把勾的日期數當晚數；預計沒有「誰先付」。預算表單新增時也有同一組切換，可以切回記一筆（金額帶全體金額 `bAll`）。不用改權限規則：預計＝`budget`，本來就只有主辦人能寫。
+- **記成實際**：主辦人打開預算項目多一顆「🧾 記成實際（記一筆）」，開記一筆並帶入名稱、全體金額（`bAll`，台幣項目自動選台幣）、分類與項目，再選誰付、怎麼分。
+- **花費頁**（`pBudget`）：`bActual()` 依 `bid` 把記帳加到項目（`byId`），對不到的依 `bg` 放 `loose[分類]`、沒分類的放 `loose['']`；金額都換成台幣（`calc().toNT`），預計用 `bAllNT`（全體）。
+  - 摘要卡下面新增 `.bprog`「已花 NT x ／預計 NT y」＋進度條＋「N%・還剩／超出・每人約已花」。**預計＝非選項的項目＋有記帳的選項**（去了才算），已花＝所有記帳。超過預計時進度條與數字變橘。
+  - 每個分類卡副標加「已花 NT x／預計 NT y」（超出變橘）；每一項右欄在每人／全體下面加「已花 NT x ✓」或「已花 NT x」＋「超出 NT y」（橘）、多筆時「N 筆」，沒記的灰字「還沒記」。
+  - 分類展開後最下面列出「（沒對到項目）○○」（選了分類但項目選其他的記帳）；沒選分類的舊記帳集中在「未分類」卡。點這些列打開那一筆，補選項目。
+  - 比較一律用**全體、台幣**；每人那一欄仍是預估。成員看得到但不能改（規則本來就是登入成員才讀得到 `budget`、`expenses`）。
+- 驗證：IzuAtami 對話 scratchpad `tt/sync.js`（42 項：主辦人切換、分類必填、項目下拉與自動帶名稱、列表膠囊、已花／預計總計與分類、✓、還沒記、沒對到項目、未分類卡與補分類、
+  記成實際帶入、超出標橘與筆數、記一筆切預計帶過去、不用選誰付、切回實際、修改時沒有切換、成員看不到預計但可選分類、成員唯讀、未登入看不到、寬版無溢出）；
+  `bud2.js`、`t1.js` 的記一筆改成先點分類。
+
 ## localStorage
 `tt-mock`、`tt-mock-me`（只有模擬模式）。Firebase 自己用 IndexedDB 存離線快取。同網域其他網站用 `izu-`、`hub-` 等前綴，不衝突。
 
@@ -100,4 +118,4 @@ trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending
 1. 使用者已完成 Pages、規則、授權網域三步驟（2026-10-07），待實測登入。
    邀請連結帶 `?openExternalBrowser=1`（LINE 會改用預設瀏覽器開）；LINE／FB／IG 內建瀏覽器另顯示「請改用 Safari 或 Chrome」提示，因為 Google 不准在內建瀏覽器登入（403 disallowed_useragent）。
 2. （已完成 2026-10-12）正式名單接到行程網站的餐廳頁。其他行程網站要接的話，照 IzuAtami-trip CLAUDE.md 變更（三十九）做。
-3. 記帳可考慮：照片收據、依類別統計、更多幣別。
+3. 記帳可考慮：照片收據、更多幣別。（依類別統計已由「記帳 ↔ 花費同步」完成。）
