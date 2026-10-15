@@ -362,14 +362,15 @@ const BCOL = ['#2b4c7e', '#c67139', '#56633f', '#b2622d', '#8a3f5c', '#7a8a5e', 
 const BOPEN = {};   // 明細展開的分組（只存在這次開啟）；wide（電腦版）預設全部展開，所以存的是「收起來」
 const bOpen = g => WIDE ? !BOPEN[g] : !!BOPEN[g];
 // 每人每晚長條：住宿項目依名稱的起始日期攤成一晚一根；讀不到日期的排在後面
-function bNightBars(L, rate) {
+function bNightBars(L, rate, eff) {
   const toNT = (v, c) => c === 'NT' ? v : v / rate, bars = [], hotels = [];
-  for (const it of L.filter(x => x.g === '住宿' && !x.opt)) {
-    const n = bNights(it), p = bPer(it); if (!n || p == null || +it.amt === 0) continue;
-    const lab = (it.name || '').replace(/^[\s\d/–\-～~（）()一二三四五六日・]+/, '').replace(/（.*?）|\(.*?\)/g, '').trim() || it.name;
+  for (const it of L.filter(x => x.g === '住宿')) {
+    const E = eff && eff(it); if (it.opt && !E) continue;
+    const n = bNights(it), p = E ? E.v : bPer(it); if (!n || p == null || (!E && +it.amt === 0)) continue;
+    const lab = E ? E.lab : (it.name || '').replace(/^[\s\d/–\-～~（）()一二三四五六日・]+/, '').replace(/（.*?）|\(.*?\)/g, '').trim() || it.name;
     if (!hotels.includes(lab)) hotels.push(lab);
     const d = /(\d{1,2})\/(\d{1,2})/.exec(it.name || '');
-    for (let i = 0; i < n; i++) bars.push({ m: d ? +d[1] : 99, dd: d ? +d[2] + i : 99, v: toNT(p / n, it.cur), lab, ord: it.order || 0 });
+    for (let i = 0; i < n; i++) bars.push({ m: d ? +d[1] : 99, dd: d ? +d[2] + i : 99, v: E ? p / n : toNT(p / n, it.cur), lab, ord: it.order || 0 });
   }
   bars.sort((x, y) => x.m - y.m || x.dd - y.dd || x.ord - y.ord);
   return { bars, hotels };
@@ -381,25 +382,27 @@ function pBudget() {
   const rateH = `<div class="rate"><span>同行人數</span>${own ? `<span class="ppl"><button data-act="ppl" data-d="-1">−</button><b>${n} 人</b><button data-act="ppl" data-d="1">＋</button></span>` : `<b>${n} 人</b>`}</div>`;
   if (!WIDE) h += rateH;
   if (!L.length) return h + (WIDE ? rateH : '') + (own ? `<div class="empty">還沒有預算項目。<br><button class="btn" data-act="bimport" id="bimp" hidden>匯入行程網站原本的預估</button><button class="btn s" data-act="badd">＋ 自己新增一項</button></div>` : `<div class="empty">主辦人還沒填預算。</div>`) + (own ? (setTimeout(bSeedCheck, 0), '') : '');
-  const toNT = o => o.NT + o.JPY / rate, S = bSum(L.filter(x => !x.opt));
+  // 有記帳的項目改用記帳（名稱、金額都照記的），預計金額不再顯示；沒記帳的才用預計
+  const AC = bActual(), recs = it => (AC.byId[it.id] || {}).L || [], aOf = it => (AC.byId[it.id] || {}).v || 0, lsum = g => (AC.loose[g] || []).reduce((s, e) => s + AC.toNT(+e.amount || 0, e.cur), 0);
+  const effAll = it => recs(it).length ? aOf(it) : bAllNT(it), incl = it => !it.opt || recs(it).length > 0;
+  const gTot = g => L.filter(x => x.g === g && incl(x)).reduce((s, it) => s + (effAll(it) || 0), 0) + lsum(g);
+  const unk = L.filter(it => incl(it) && !recs(it).length && bAllNT(it) == null).length;
+  const AT = AC.total, T = L.filter(incl).reduce((s, it) => s + (effAll(it) || 0), 0) + Object.keys(AC.loose).reduce((s, g) => s + lsum(g), 0), pct = T ? AT / T * 100 : 0;
   let A = WIDE ? rateH : '', B = '';
-  A += `<div class="sum bsum"><div class="k">每人大約要準備</div><div class="v">${nt(toNT(S.per))}</div>
-    <div class="k" style="margin-top:3px">全體 ${n} 人 約 ${nt(toNT(S.all))}${S.u ? `・另有 ${S.u} 項金額未知` : ''}</div></div>`;
-  const AC = bActual(), aOf = it => (AC.byId[it.id] || {}).v || 0, lsum = g => (AC.loose[g] || []).reduce((s, e) => s + AC.toNT(+e.amount || 0, e.cur), 0);
-  // 預計＝非選項的項目＋有記帳的選項（去了才算）
-  const planIn = it => !it.opt || aOf(it) > 0, PL = L.filter(planIn).reduce((s, it) => s + (bAllNT(it) || 0), 0), AT = AC.total, pct = PL ? AT / PL * 100 : 0;
-  A += `<div class="bprog${AT > PL + 1 && PL ? ' over' : ''}"><div class="hd"><b>已花 ${nt(AT)}</b><span>／預計 ${nt(PL)}</span></div>
+  A += `<div class="sum bsum"><div class="k">每人大約要準備</div><div class="v">${nt(T / n)}</div>
+    <div class="k" style="margin-top:3px">全體 ${n} 人 約 ${nt(T)}${unk ? `・另有 ${unk} 項金額未知` : ''}</div></div>`;
+  A += `<div class="bprog"><div class="hd"><b>已記帳 ${nt(AT)}</b><span>／合計 ${nt(T)}</span></div>
     <div class="t"><i style="width:${Math.min(100, pct).toFixed(1)}%"></i></div>
-    <p>${PL ? `${Math.round(pct)}%・${AT > PL ? `超出 ${nt(AT - PL)}` : `還剩 ${nt(PL - AT)}`}` : '還沒有預計金額'}・全體 ${n} 人，每人約已花 ${nt(AT / n)}</p>
-    <p class="s">實際＝「記帳」裡每一筆（換成台幣）；記帳時挑「花費項目」就會對到這裡。選項有記帳才算進預計。</p></div>`;
+    <p>${Math.round(pct)}%・還沒記帳的預計 ${nt(Math.max(0, T - AT))}・每人約已花 ${nt(AT / n)}</p>
+    <p class="s">記過帳的項目改用記帳的名稱與金額，還沒記的才用預計。記帳時挑「花費項目」就會對到這裡。選項有記帳才算進合計。</p></div>`;
   const groups = BG.concat([...new Set(L.map(x => x.g).concat(Object.keys(AC.loose).filter(Boolean)))].filter(g => !BG.includes(g))).filter(g => L.some(x => x.g === g) || (AC.loose[g] || []).length);
   // 各類每人花費長條（台幣）
-  const gs = groups.filter(g => g !== '選項').map((g, i) => ({ g, v: toNT(bSum(L.filter(x => x.g === g && !x.opt)).per), c: BCOL[i % BCOL.length] }));
+  const gs = groups.filter(g => g !== '選項').map((g, i) => ({ g, v: gTot(g) / n, c: BCOL[i % BCOL.length] }));
   const mx = Math.max(1, ...gs.map(x => x.v));
   A += `<div class="bbars">${gs.map(x => `<div class="bb"><b>${esc(x.g)}</b><div class="t"><i style="width:${Math.max(x.v ? 3 : 0, x.v / mx * 100).toFixed(1)}%;background:${x.c}"></i></div><span>${x.v ? Math.round(x.v).toLocaleString('en-US') : '—'}</span></div>`).join('')}
-    <div class="bbn">每人・台幣（日圓 ÷ ${rate}）・選項不計入</div></div>`;
-  // 每人每晚住宿
-  const NB = bNightBars(L, rate);
+    <div class="bbn">每人・台幣（日圓 ÷ ${rate}）・有記帳的用實際</div></div>`;
+  // 每人每晚住宿（有記帳的用記帳金額與名稱）
+  const NB = bNightBars(L, rate, it => recs(it).length ? { v: aOf(it) / n, lab: recs(it)[0].title } : null);
   if (NB.bars.length) {
     const nmx = Math.max(...NB.bars.map(x => x.v)), avg = NB.bars.reduce((a, x) => a + x.v, 0) / NB.bars.length, col = l => BCOL[NB.hotels.indexOf(l) % BCOL.length];
     const top = NB.bars.reduce((a, x) => x.v > a.v ? x : a, NB.bars[0]);
@@ -410,38 +413,39 @@ function pBudget() {
   if (WIDE && own) B += `<div class="whd"><b>明細</b><span>點分類展開・點項目可修改</span><button class="lnk" data-act="badd">＋ 新增項目</button></div>`;
   // 明細：每類一張卡，點開才列項目
   for (const g of groups) {
-    const G = L.filter(x => x.g === g), opt = g === '選項', s2 = bSum(G), on = bOpen(g), LZ = AC.loose[g] || [];
-    const gA = G.reduce((s, it) => s + aOf(it), 0) + lsum(g), gP = G.filter(planIn).reduce((s, it) => s + (bAllNT(it) || 0), 0);
-    const sub = [`${G.length} 項`]; if (s2.u) sub.push(`${s2.u} 項未知`); if (opt) sub.push('去了才算・不計入');
-    sub.push(`<span class="ga${gA > gP + 1 ? ' over' : ''}">已花 ${nt(gA)}／預計 ${nt(gP)}</span>`);
+    const G = L.filter(x => x.g === g), opt = g === '選項', on = bOpen(g), LZ = AC.loose[g] || [];
+    const gA = G.reduce((s, it) => s + aOf(it), 0) + lsum(g), left = G.filter(it => incl(it) && !recs(it).length), gU = left.filter(it => bAllNT(it) == null).length, gT = gTot(g);
+    const sub = [];
+    if (gA) sub.push(`<span class="ga">已記帳 ${nt(gA)}</span>`);
+    if (left.length) sub.push(`${left.length} 項還沒記`); if (gU) sub.push(`${gU} 項未知`); if (opt) sub.push('去了才算');
     if (g === '住宿' && NB.bars.length) sub.push(`共 ${NB.bars.length} 晚`);
-    const yenTxt = s2.per.JPY ? `<small>${s2.per.NT ? nt(s2.per.NT) + ' ＋ ' : ''}${yen(s2.per.JPY)}</small>` : '';
-    B += `<div class="bcard${opt ? ' opt' : ''}${on ? ' on' : ''}"><button class="bch" data-act="btog" data-g="${esc(g)}"><i>${BICO[g] || '•'}</i><div><b>${esc(g)}</b><small>${sub.join('・')}</small></div><div class="r">${toNT(s2.per) ? nt(toNT(s2.per)) : '—'}${yenTxt}</div><span class="ar">${on ? '⌄' : '›'}</span></button>`;
+    B += `<div class="bcard${opt ? ' opt' : ''}${on ? ' on' : ''}"><button class="bch" data-act="btog" data-g="${esc(g)}"><i>${BICO[g] || '•'}</i><div><b>${esc(g)}</b><small>${sub.join('・') || `${G.length} 項`}</small></div><div class="r">${gT ? nt(gT / n) : '—'}${gT ? `<small>全體 ${nt(gT)}</small>` : ''}</div><span class="ar">${on ? '⌄' : '›'}</span></button>`;
     if (on) for (const it of G) {
+      const R = recs(it);
+      if (R.length) {   // 記過帳：只列記的那幾筆
+        const ni = g === '住宿' ? bNights(it) : 0, pn = ni ? aOf(it) / n / ni : 0;
+        B += R.map((e, j) => bRow(e, AC, n, j === 0 && pn ? `每人每晚 ${nt(pn)}${R.length > 1 ? `（${R.length} 筆合計）` : ''}` : '')).join('');
+        continue;
+      }
       const unk = it.amt == null || it.amt === '', free = +it.amt === 0 && !unk, ap = it.approx ? '約 ' : '', ni = bNights(it), nTxt = bNightTxt(it);
       const meta = [ni && g === '住宿' ? `${ni} 晚` : '', esc(it.note), unk || free ? '' : bHow(it)].filter(Boolean).join('・');
-      const av = aOf(it), pv = bAllNT(it), an = (AC.byId[it.id] || {}).n || 0;
-      const ovr = pv != null && av > pv + 1;
-      const act = av ? `<small class="act${ovr ? ' over' : ' ok'}">已花 ${nt(av)}${ovr ? '' : pv != null ? ' ✓' : ''}</small>${ovr ? `<small class="act over">超出 ${nt(av - pv)}</small>` : ''}${an > 1 ? `<small>${an} 筆</small>` : ''}` : '<small class="act no">還沒記</small>';
-      const right = (unk ? '<span class="unk">未知</span>' : free ? '<b>免費</b>' : `<b>${ap}${bMoney(bPer(it), it.cur)}</b><small>全體 ${bMoney(bAll(it), it.cur)}</small>`) + act;
+      const right = (unk ? '<span class="unk">未知</span>' : free ? '<b>免費</b>' : `<b>${ap}${bMoney(bPer(it), it.cur)}</b><small>全體 ${bMoney(bAll(it), it.cur)}</small>`) + '<small class="act no">預計・還沒記帳</small>';
       B += `<${own ? 'button' : 'div'} class="bit"${own ? ` data-act="bedit" data-id="${esc(it.id)}"` : ''}><div><b>${esc(it.name)}</b>${meta ? `<span>${meta}</span>` : ''}${nTxt ? `<em>${nTxt}</em>` : ''}</div><div class="r">${right}</div></${own ? 'button' : 'div'}>`;
-      B += ((AC.byId[it.id] || {}).L || []).map(e => bRec(e, AC)).join('');
     }
-    if (on) B += LZ.map(e => bLoose(e, AC)).join('');
+    if (on) B += LZ.map(e => bRow(e, AC, n, '', true)).join('');
     B += `</div>`;
   }
   const UN = AC.loose[''] || [];
   if (UN.length) { const on = bOpen('未分類'), v = lsum('');
-    B += `<div class="bcard un${on ? ' on' : ''}"><button class="bch" data-act="btog" data-g="未分類"><i>❔</i><div><b>未分類</b><small>${UN.length} 筆記帳沒選花費項目・點一筆補上</small></div><div class="r">${nt(v)}</div><span class="ar">${on ? '⌄' : '›'}</span></button>${on ? UN.map(e => bLoose(e, AC)).join('') : ''}</div>`; }
-  B += `<div class="small" style="margin:8px 20px">${own ? '點分類展開明細，點任一項可以修改金額與計算方式。' : '點分類展開明細；只有主辦人能修改預算。'}這頁是出發前的預估；實際花了多少請到「記帳」。</div>`;
+    B += `<div class="bcard un${on ? ' on' : ''}"><button class="bch" data-act="btog" data-g="未分類"><i>❔</i><div><b>未分類</b><small>${UN.length} 筆記帳沒選花費項目・點一筆補上</small></div><div class="r">${nt(v / n)}<small>全體 ${nt(v)}</small></div><span class="ar">${on ? '⌄' : '›'}</span></button>${on ? UN.map(e => bRow(e, AC, n, '', true)).join('') : ''}</div>`; }
+  B += `<div class="small" style="margin:8px 20px">${own ? '點分類展開明細，點任一項可以修改金額與計算方式。' : '點分類展開明細；只有主辦人能修改預算。'}記過帳的項目點了會打開那一筆記帳。</div>`;
   h += cols(A, B);
   if (own && !WIDE) h += `<button class="fab" data-act="badd">＋ 新增項目</button>`;
   return h;
 }
-// 沒對到項目的記帳：點了打開那一筆，補選花費項目
-function bLoose(e, AC) { return `<button class="bit bx" data-act="edit" data-id="${esc(e.id)}"><div><b>（沒對到項目）${esc(e.title)}</b><span>${esc(dTxt(eDates(e), false))}・${esc(mInfo(e.payer).name)} 付</span></div><div class="r"><small class="act">已花 ${nt(AC.toNT(+e.amount || 0, e.cur))}</small></div></button>`; }
-// 對到項目的每一筆記帳，列在那一項下面（點了打開那一筆）
-function bRec(e, AC) { const v = AC.toNT(+e.amount || 0, e.cur); return `<button class="brec" data-act="edit" data-id="${esc(e.id)}"><i>${esc(e.icon || '🧾')}</i><div><b>${esc(e.title)}</b><span>記帳・${esc(dTxt(eDates(e), false))}・${esc(mInfo(e.payer).name)} 付${eAuto(e) ? '・自動對到' : ''}</span></div><em>${e.cur === 'TWD' ? nt(v) : `${yen(+e.amount)}<small>≈ ${nt(v)}</small>`}</em></button>`; }
+// 記帳那一筆當成花費的一列：名稱、金額照記的（loose＝沒對到預算項目）
+function bRow(e, AC, n, em, loose) { const v = AC.toNT(+e.amount || 0, e.cur);
+  return `<button class="bit br${loose ? ' bx' : ''}" data-act="edit" data-id="${esc(e.id)}"><div><b><i class="bri">${esc(e.icon || '🧾')}</i>${esc(e.title)}</b><span>${esc(dTxt(eDates(e), false))}・${esc(mInfo(e.payer).name)} 付・${loose ? '沒對到預算項目' : eAuto(e) ? '記帳（自動對到）' : '記帳'}</span>${em ? `<em>${em}</em>` : ''}</div><div class="r"><b>${nt(v / n)}</b><small>全體 ${e.cur === 'TWD' ? nt(v) : `${yen(+e.amount)}≈${nt(v)}`}</small><small class="act ok">✓ 已記帳</small></div></button>`; }
 async function bSeedCheck() { const b = $('#bimp'); if (!b) return; try { const r = await fetch('seeds/' + encodeURIComponent(cur.id) + '.json', { cache: 'no-cache' }); if (!r.ok) return; const d = await r.json(); B = { seed: d }; b.hidden = false; b.textContent = `匯入行程網站原本的預估（${d.items.length} 項）`; } catch (e) {} }
 function openBudget(id, pre) {
   const it = id && (cur.budget || []).find(x => x.id === id);
