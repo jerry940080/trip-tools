@@ -23,7 +23,7 @@ users/{uid}                 {trips:{tripId:{title,start,end,color,cover,role}}} 
 trips/{id}                  {title,start,end,color,cover,owner,rate,createdAt}     ← id＝行程 repo 名稱
 trips/{id}/private/invite   {key,expires(Timestamp)}                               ← 只有主辦人能讀寫
 trips/{id}/members/{uid}    {uid,name,photo,email,role:'owner'|'member',key,joinedAt}
-trips/{id}/expenses/{auto}  {date(第一天),dates(勾選的日期陣列),title,icon,amount,cur:'JPY'|'TWD',payer,mode:'equal'|'ratio'|'amount'|'treat',shares:{uid:份數或金額},bg(分類),bid(預算項目 id，空＝其他),by,at}
+trips/{id}/expenses/{auto}  {date(第一天),dates(勾選的日期陣列),title,icon,amount,cur:'JPY'|'TWD',payer,mode:'equal'|'ratio'|'amount'|'treat',shares:{uid:份數或金額},uses(幾個人用，0＝和分帳一樣),bg(分類),bid(預算項目 id，空＝其他),by,at}
 trips/{id}/settles/{auto}   {from,to,amount(台幣),at,by}
 trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending'|'in'|'no',at,decidedAt}
 ```
@@ -124,6 +124,8 @@ trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending
   - 「每人大約要準備」、分類長條、分類卡、每人每晚長條、「每人約已花」都改成**把每一項的每人金額加起來**（`effPer`），不再用全體 ÷ 固定人數。全體金額不受影響。
   - 上方的「同行人數」改名「預設人數」（新增項目先帶這個），仍存在 `trips/{id}.ppl`。舊項目沒有 `ppl` 就用預設人數，所以不用改資料。
   - 行程網站住宿頁的每人每晚（IzuAtami `stayNight`）也改讀項目的 `ppl`。
+  - **記一筆多一欄「幾個人用」**（使用者選的；只有 2 位成員加入，分帳最多勾 2 人，但實際 4 人用）：存在 expense 的 `uses`（0＝沒填）。
+    `eN(e)`＝`uses` 或分帳人數（`eSh`），**只影響花費頁的每人金額，結算照分帳**。欄位提示「N 人（和分帳一樣）」，清空就回到分帳人數；記帳列表與花費頁寫「2 人分・4 人用」／「4 人用」。記一筆切成預計時，人數優先帶這欄。
   - 驗證 `tt/rep.js`（加了：記帳 2 人分 → 機票每人 18,602、每晚長條 4,665；成田特快改 2 人 → 全體 ¥6,660、其他項目仍 4 人）。
 - 驗證：IzuAtami 對話 scratchpad `tt/sync.js`（42 項：主辦人切換、分類必填、項目下拉與自動帶名稱、列表膠囊、已花／預計總計與分類、✓、還沒記、沒對到項目、未分類卡與補分類、
   記成實際帶入、超出標橘與筆數、記一筆切預計帶過去、不用選誰付、切回實際、修改時沒有切換、成員看不到預計但可選分類、成員唯讀、未登入看不到、寬版無溢出）；
