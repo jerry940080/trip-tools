@@ -129,6 +129,10 @@ trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending
   記成實際帶入、超出標橘與筆數、記一筆切預計帶過去、不用選誰付、切回實際、修改時沒有切換、成員看不到預計但可選分類、成員唯讀、未登入看不到、寬版無溢出）；
   `bud2.js`、`t1.js` 的記一筆改成先點分類。
 
+## 快取（2026-10-15）
+GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用者重新整理可能還是舊的 `app.js`（使用者截圖就是這樣）。
+`index.html` 載入 `app.js?v=日期`，**改了 `app.js` 就把 `v` 改掉**，index.html 一重新抓就保證拿到新版（index.html 本身仍可能快取 10 分鐘）。
+
 ## localStorage
 `tt-mock`、`tt-mock-me`（只有模擬模式）。Firebase 自己用 IndexedDB 存離線快取。同網域其他網站用 `izu-`、`hub-` 等前綴，不衝突。
 
