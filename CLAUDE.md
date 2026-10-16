@@ -6,7 +6,7 @@
 GitHub Pages 靜態網站＋Firebase（Spark 免費方案，專案 `trip-tools-21847`）。功能：
 - **記帳**：日幣／台幣，每趟一個匯率（1 台幣＝N 日圓，預設 4.8，成員都能改）；誰付＋哪幾個人分；
   分法 平均／比例（份數）／指定金額（加總要等於金額）／有人請客（只算在付款人身上）。
-- **結算**：全部換台幣算每人結餘（先付−應分），貪婪法算最少轉帳；按「已付」記一筆 `settles`，結餘跟著抵掉；可匯出 CSV。
+- **結算**：2026-10-16 起改成「我跟每個人之間」兩兩抵帳（見下方「記帳隱私」）；按「已收到／已付給他」記一筆 `settles`；可匯出自己的帳（CSV）。
 - **餐廳**：成員貼 Google 地圖連結推薦 → 待收錄 → 主辦人收錄（確認排哪天、哪餐；餐別必填）或婉拒。
   **2026-10-12 起已接到行程網站**：IzuAtami-trip 的餐廳頁用 Firestore REST 讀 `status=='in'` 的店，標「家人推薦」；
   行程網站的「＋ 新增餐廳」開 `#/t/IzuAtami-trip/resto/add`（這個路由會直接打開推薦表單，再把網址收回 `/resto`）。
@@ -23,8 +23,8 @@ users/{uid}                 {trips:{tripId:{title,start,end,color,cover,role}}} 
 trips/{id}                  {title,start,end,color,cover,owner,rate,createdAt}     ← id＝行程 repo 名稱
 trips/{id}/private/invite   {key,expires(Timestamp)}                               ← 只有主辦人能讀寫
 trips/{id}/members/{uid}    {uid,name,photo,email,role:'owner'|'member',key,joinedAt}
-trips/{id}/expenses/{auto}  {date(第一天),dates(勾選的日期陣列),title,icon,amount,cur:'JPY'|'TWD',payer,mode:'equal'|'ratio'|'amount'|'treat',shares:{uid:份數或金額},uses(幾個人用，0＝和分帳一樣),bg(分類),bid(預算項目 id，空＝其他),by,at}
-trips/{id}/settles/{auto}   {from,to,amount(台幣),at,by}
+trips/{id}/expenses/{auto}  {vis(看得到的人 uid 陣列),date(第一天),dates(勾選的日期陣列),title,icon,amount,cur:'JPY'|'TWD',payer,mode:'equal'|'ratio'|'amount'|'treat',shares:{uid:份數或金額},uses(幾個人用，0＝和分帳一樣),bg(分類),bid(預算項目 id，空＝其他),by,at}
+trips/{id}/settles/{auto}   {from,to,amount(台幣),at,by,vis:[from,to]}
 trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending'|'in'|'no',at,decidedAt}
 ```
 - 建立行程時從 `/<repo>/trip.json`（同網域）讀標題、日期、顏色、封面；可建立的清單是 `app.js` 的 `KNOWN`。
@@ -131,12 +131,33 @@ trips/{id}/restos/{auto}    {name,url,ll,day,meal,note,by,byName,status:'pending
   記成實際帶入、超出標橘與筆數、記一筆切預計帶過去、不用選誰付、切回實際、修改時沒有切換、成員看不到預計但可選分類、成員唯讀、未登入看不到、寬版無溢出）；
   `bud2.js`、`t1.js` 的記一筆改成先點分類。
 
+## 記帳隱私（2026-10-16）
+使用者：「花費、記帳頁面是每個使用者都會看到屬於自己的內容，有跟別人分帳的那幾個項目才共用」。決定：**有分到的人才看得到**、**主辦人也看不到別人自己的花費**、
+**不做個人預計**（預算維持全團共用、主辦人編輯）、結算明細一律顯示、主辦人切到「預計要花」時不出現「只有我／跟別人分」。
+- **資料**：`expenses` 多 `vis`＝記帳的人＋付錢的人＋`shares` 的每個人（`mkVis`，存檔時算）；`settles` 多 `vis:[from,to]`。
+  只有自己一個人＝「👤 只有我」（`ePriv`：vis 只有一個人）。
+- **規則**：`expenses`／`settles` 讀取要 `request.auth.uid in resource.data.vis`；記帳建立與修改要 `visOk`（vis 包含 by、payer、shares 的每個 key）；
+  修改、刪除還要自己在 vis 裡（主辦人也只能改看得到的）；轉帳只有 from／to 兩人能記、vis 裡的人能取消。
+  前端用 `where('vis','array-contains',uid)` 查（`fb.js` 的 `watch` filter 第三個值是運算子），**不帶這個條件的查詢會整個被拒**。
+- **舊資料**：沒有 `vis` 的記帳在新規則下誰都讀不到。主辦人打開這趟時 `migrateVis()` 用 `api.getAll` 讀全部、補上 vis（舊規則下主辦人讀得到、改得到）；
+  新規則上線後 getAll 被拒就當作補完。「成員」頁顯示狀態：「舊記帳都補好…可以貼新規則」／「新規則已經生效」。**順序：先推程式 → 主辦人打開一次 → 再貼 firestore.rules**。
+- **記帳頁**：上方「我這趟花了」＝我的份（自己的＋分帳我的份），右邊是兩兩抵完的淨額，chip「給我 N／我給 N」；列表只有看得到的，每日小計是「我的份」，
+  每筆標「👤 只有我」或「👥 N 人分」＋「我的份」。
+- **記一筆**：頂端「👤 只有我／👥 跟別人分」（只在新增或自己記的帳出現）；只有我＝不顯示誰付、怎麼分、幾個人用，存成 payer＝自己、shares＝{自己:1}；
+  跟別人分＝原本的欄位＋「看得到這筆的人」說明框。新增時記住上次選的（localStorage `tt-priv`，第一次預設只有我）。從預算「記成實際」預設跟別人分。
+- **結算**：`calc()` 多回傳 `pair`（u→淨額，正＝u 要給我）、`pd`（明細）、`mp`（每筆我的份）、`own`／`shd`。每人一列＋明細（「おでん 妹妹的份 420 ＋ … − 柚木の郷 你的份 240」）；
+  全團最少轉帳與「每個人」列表拿掉（看不到別人之間的帳）；右邊只剩「我的合計」。CSV 只有自己看得到的帳＋「我的份」欄＋跟每個人的淨額。
+- **花費頁**：「我大約要準備」＝共同項目我的份＋我自己的花費；記過帳的項目只算我有分到的（`rPer`：沒分到＝0）；進度條「我已記帳／我大約要準備」；
+  **各分類明細手機、電腦都預設收起來**（`BOPEN` 存展開的）。
+- 驗證：IzuAtami-trip 對話 scratchpad `priv2/t.js`（29 項：未補 vis 看不到、主辦人補 vis、哥哥／爸爸／妹妹三個角度的總結與列表、結算明細、已收到後兩清且第三人看不到轉帳、
+  預設只有我與記住、看得到的人說明框、花費頁我的數字與預設收起）。舊的 `tt/*.js` 依舊版「全團」畫面寫的，已過時。
+
 ## 快取（2026-10-15）
 GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用者重新整理可能還是舊的 `app.js`（使用者截圖就是這樣）。
 `index.html` 載入 `app.js?v=日期`，**改了 `app.js` 就把 `v` 改掉**，index.html 一重新抓就保證拿到新版（index.html 本身仍可能快取 10 分鐘）。
 
 ## localStorage
-`tt-mock`、`tt-mock-me`（只有模擬模式）。Firebase 自己用 IndexedDB 存離線快取。同網域其他網站用 `izu-`、`hub-` 等前綴，不衝突。
+`tt-mock`、`tt-mock-me`（只有模擬模式；`&oldrules=1` 模擬還沒換規則）、`tt-priv`（記一筆上次選只有我／跟別人分）。Firebase 自己用 IndexedDB 存離線快取。同網域其他網站用 `izu-`、`hub-` 等前綴，不衝突。
 
 ## 待辦
 1. 使用者已完成 Pages、規則、授權網域三步驟（2026-10-07），待實測登入。

@@ -11,6 +11,11 @@ service cloud.firestore {
       return signedIn() && (exists(/databases/$(database)/documents/trips/$(t)/members/$(request.auth.uid)) || isOwner(t));
     }
 
+    // 記帳的 vis 要包含記帳的人、付錢的人、每個有分到的人
+    function visOk(d) {
+      return d.vis is list && d.vis.hasAll([d.by, d.payer]) && d.vis.hasAll(d.shares.keys());
+    }
+
     // 每個人自己的「我加入了哪些行程」清單
     match /users/{uid} {
       allow read, write: if signedIn() && request.auth.uid == uid;
@@ -49,14 +54,18 @@ service cloud.firestore {
         allow delete: if isOwner(t) || (signedIn() && request.auth.uid == uid);
       }
 
-      // 花費：成員都能看、能記；只有記帳的人或主辦人能改、能刪
+      // 記帳：每筆有 vis（看得到的人＝記帳的人＋付錢的人＋有分到的人），只有 vis 裡的人讀得到。
+      // 自己一個人的花費 vis 只有自己，別人（包括主辦人）都看不到。
+      // 只有記帳的人或主辦人能改、能刪，而且自己要在 vis 裡（主辦人也改不到沒分到的帳）。
       match /expenses/{e} {
-        allow read: if isMember(t);
-        allow create: if isMember(t) && request.resource.data.by == request.auth.uid;
-        allow update: if isMember(t)
+        allow read: if isMember(t) && request.auth.uid in resource.data.vis;
+        allow create: if isMember(t) && request.resource.data.by == request.auth.uid && visOk(request.resource.data);
+        allow update: if isMember(t) && request.auth.uid in resource.data.vis
           && (resource.data.by == request.auth.uid || isOwner(t))
-          && request.resource.data.by == resource.data.by;
-        allow delete: if isMember(t) && (resource.data.by == request.auth.uid || isOwner(t));
+          && request.resource.data.by == resource.data.by
+          && visOk(request.resource.data);
+        allow delete: if isMember(t) && request.auth.uid in resource.data.vis
+          && (resource.data.by == request.auth.uid || isOwner(t));
       }
 
       // 預算（出發前的預估）：成員看得到，只有主辦人能改
@@ -65,11 +74,14 @@ service cloud.firestore {
         allow write: if isOwner(t);
       }
 
-      // 已付的轉帳
+      // 已付的轉帳：只有轉帳的兩個人（vis）看得到；兩個人都能記、都能取消
       match /settles/{s} {
-        allow read: if isMember(t);
-        allow create: if isMember(t) && request.resource.data.by == request.auth.uid;
-        allow delete: if isMember(t) && (resource.data.by == request.auth.uid || isOwner(t));
+        allow read: if isMember(t) && request.auth.uid in resource.data.vis;
+        allow create: if isMember(t) && request.resource.data.by == request.auth.uid
+          && request.resource.data.vis is list
+          && request.resource.data.vis.hasAll([request.resource.data.from, request.resource.data.to])
+          && request.auth.uid in [request.resource.data.from, request.resource.data.to];
+        allow delete: if isMember(t) && request.auth.uid in resource.data.vis;
       }
 
       // 餐廳：成員推薦（先進待收錄），只有主辦人能收錄／婉拒

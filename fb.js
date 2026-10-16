@@ -1,7 +1,7 @@
 // Firebase 實作：登入（Google）＋ Firestore。介面和 mock.js 一模一樣，app.js 只認這組函式。
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, onSnapshot, query, where, Timestamp }
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, onSnapshot, query, where, getDocs, Timestamp }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 // 這段設定本來就會公開在網頁上，不是密碼；資料靠 firestore.rules 保護
@@ -41,11 +41,14 @@ export default {
   async getInvite(id) { const s = await getDoc(doc(db, 'trips', id, 'private', 'invite')); return s.exists() ? conv(s.data()) : null; },
   setInvite(id, inv) { return setDoc(doc(db, 'trips', id, 'private', 'invite'), { key: inv.key, expires: Timestamp.fromMillis(inv.expires) }); },
 
+  // filter＝[欄位, 值, 運算子]，運算子預設 '=='；記帳、轉帳用 ['vis', 我的 uid, 'array-contains']（只讀得到自己在 vis 裡的）
   watch(id, sub, cb, err, filter) {
     let q = collection(db, 'trips', id, sub);
-    if (filter) q = query(q, where(filter[0], '==', filter[1]));
+    if (filter) q = query(q, where(filter[0], filter[2] || '==', filter[1]));
     return onSnapshot(q, s => cb(s.docs.map(out)), err);
   },
+  // 一次讀整個集合（不過濾）：只給主辦人補舊資料的 vis 用。新規則上線後會被拒絕，呼叫的地方要接住錯誤
+  async getAll(id, sub) { const s = await getDocs(collection(db, 'trips', id, sub)); return s.docs.map(out); },
   add(id, sub, data) { return addDoc(collection(db, 'trips', id, sub), data); },
   set(id, sub, docId, data) { return setDoc(doc(db, 'trips', id, sub, docId), data); },
   update(id, sub, docId, patch) { return updateDoc(doc(db, 'trips', id, sub, docId), patch); },
