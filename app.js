@@ -222,10 +222,11 @@ let MSEL = null;
 function pExpM() {
   const c = calc(), D = days(cur.trip), ex = exSorted(), extra = [...new Set(ex.map(e => e.date))].filter(d => d && !D.includes(d)).sort();
   // 沒選過就自動：旅途中今天、否則最近一天（每次重畫重算，資料還沒載入時不會卡在第一天）
-  const sel = MSEL || tileDay(null), td = tileDay(sel), all = D.concat(extra), mx = Math.max(1, ...all.map(d => dayMine(c, d)));
+  const sel = MSEL || tileDay(null), td = tileDay(sel), all = D.concat(extra);
   let h = head('記帳') + heroTiles(c, td);
-  h += `<div class="edays"><button class="edy all${sel === 'all' ? ' on' : ''}" data-act="msel" data-d="all"><div class="bar"><b>全</b></div><b>全部</b>${ex.length} 筆</button>${all.map(d => { const v = dayMine(c, d), i = D.indexOf(d), n = ex.filter(e => e.date === d).length;
-    return `<button class="edy${sel === d ? ' on' : ''}${n ? '' : ' no'}" data-act="msel" data-d="${d}"><div class="bar"><i style="height:${n ? Math.max(4, v / mx * 28) : 2}px"></i></div><b>${i >= 0 ? 'D' + (i + 1) : '＋'}</b>${fmtD(d)}</button>`; }).join('')}</div>`;
+  // 日期方塊：星期／幾號（大字）／那天我的份（沒有就「—」），選中的整塊填橘色
+  h += `<div class="edays"><button class="edy all${sel === 'all' ? ' on' : ''}" data-act="msel" data-d="all"><b>全部</b><em>${ex.length} 筆</em></button>${all.map(d => { const v = dayMine(c, d), i = D.indexOf(d), n = ex.filter(e => e.date === d).length;
+    return `<button class="edy${sel === d ? ' on' : ''}${n ? '' : ' no'}" data-act="msel" data-d="${d}" title="${i >= 0 ? 'Day ' + (i + 1) : fmtD(d)}"><small>${wd(d)}</small><b>${+d.slice(8)}</b><em>${n ? Math.round(v).toLocaleString('en-US') : '—'}</em></button>`; }).join('')}</div>`;
   if (sel === 'all') { h += `<div class="ehd"><b>全部</b><span>${ex.length} 筆・NT ${Math.round(c.own + c.shd).toLocaleString('en-US')}</span></div>`; h += ex.length ? dayGroups(c, ex) : `<div class="empty">還沒有任何一筆。<br>按右下角「＋ 記一筆」開始。</div>`; }
   else { const L = ex.filter(e => e.date === sel), i = D.indexOf(sel);
     h += `<div class="ehd"><b>${fmtD(sel)}（${wd(sel)}）${i >= 0 ? `Day ${i + 1}` : ''}</b><span>${L.length} 筆・NT ${Math.round(dayMine(c, sel)).toLocaleString('en-US')}</span></div>`;
@@ -277,7 +278,7 @@ function openExp(id, pre) {
 }
 // 只有我／跟別人分：新增時記住上次選的（第一次預設只有我，比較不會不小心把私人花費給別人看到）
 function lastPriv() { try { return localStorage.getItem('tt-priv') !== '0'; } catch (e) { return true; } }
-const privSeg = () => `<div class="split k2 pv"><button data-act="priv" data-v="1" class="${F.priv ? 'on' : ''}">👤 只有我</button><button data-act="priv" data-v="0" class="${F.priv ? '' : 'on'}">👥 跟別人分</button></div>`;
+const privSeg = () => `<div class="lab">這筆花費是</div><div class="pvc"><button data-act="priv" data-v="1" class="${F.priv ? 'on' : ''}"><i>👤</i><b>只有我</b><small>自己的花費，別人看不到</small></button><button data-act="priv" data-v="0" class="${F.priv ? '' : 'on'}"><i>👥</i><b>跟別人分</b><small>選誰先付、怎麼分</small></button></div>`;
 // 記帳 ↔ 預算：每筆記帳存 bg（分類）＋ bid（預算項目 id，空＝「其他（只選分類）」）
 const GICO = { 機票: '✈', 住宿: '🏨', 交通: '🚆', '門票・體驗': '🎫', 餐飲: '🍽', 其他: '💴' };
 // 沒選過項目的記帳（舊資料）自動推：分類看圖示，項目看日期（預算名稱開頭的「2/13–14」包含記帳的第一天），或該分類只有一項
@@ -296,7 +297,10 @@ const eAuto = e => e && !e.bid && e.bid !== '' && !!bItem(e);
 function eLabel(e) { const it = bItem(e), g = eGroup(e); return it ? `${it.g}・${it.name}` : g ? `${g}・其他` : ''; }
 const bGroups = () => BG.concat([...new Set((cur.budget || []).map(x => x.g))].filter(g => !BG.includes(g)));
 // 主辦人新增時可以切「實際花了／預計要花」；預計＝預算項目，不用選誰付
-const kindSeg = k => !isOwner() ? '' : `<div class="split k2"><button data-act="kind" data-k="real" class="${k === 'real' ? 'on' : ''}">🧾 實際花了</button><button data-act="kind" data-k="plan" class="${k === 'plan' ? 'on' : ''}">📋 預計要花</button></div>`;
+// 主辦人才有：記一筆 ↔ 預計要花（預算項目）的切換，放在表單最上面一條提示列（和下面「只有我／跟別人分」長得不一樣，不會看成四選一）
+const kindSeg = k => !isOwner() ? '' : k === 'real'
+  ? `<button class="kbar" data-act="kind" data-k="plan"><i>📋</i><span><b>還沒花、只是想先記預算？</b>預計要花的會列在「花費」頁</span><u>改記預計 ›</u></button>`
+  : `<button class="kbar g" data-act="kind" data-k="real"><i>🧾</i><span><b>已經付錢了？</b>改成記一筆實際花費</span><u>改記實際 ›</u></button>`;
 function itemPick() {
   const its = (cur.budget || []).filter(x => x.g === F.bg).sort((a, b) => (a.order || 0) - (b.order || 0)), A = bActual();
   return `<div class="lab">花費項目<span class="small" style="font-weight:500;margin-left:6px">對到「花費」頁的哪一項</span></div>
@@ -321,11 +325,10 @@ function drawExp() {
   }
   const tg = $('#sheet');
   tg.innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">${F.id ? '修改這筆' : '記一筆'}</b><button class="small" data-act="close">取消</button></div>
-  ${mineRec ? privSeg() : ''}${F.id ? '' : kindSeg('real')}
+  ${F.id ? '' : kindSeg('real')}${mineRec ? privSeg() : ''}
   <div class="lab">金額</div><div class="amt"><input id="fAmt" inputmode="decimal" placeholder="0" value="${esc(F.amount)}"><div class="cur"><button data-act="cur" data-c="JPY" class="${F.cur === 'JPY' ? 'on' : ''}">日圓</button><button data-act="cur" data-c="TWD" class="${F.cur === 'TWD' ? 'on' : ''}">台幣</button></div></div>
   <div class="small" style="margin-top:4px" id="fConv">${convTxt()}</div>
   <div class="lab">名稱</div><input class="inp" id="fTitle" placeholder="例如：まぐろ館 午餐" value="${esc(F.title)}">
-  <div class="chips" style="margin-top:8px">${ICONS.map(i => `<button class="chip ${F.icon === i ? 'on' : ''}" style="padding:4px 9px" data-act="icon" data-i="${i}">${i}</button>`).join('')}</div>
   ${itemPick()}
   <div class="lab">日期<span class="small" style="font-weight:500;margin-left:6px">可以勾好幾天（機票去回、住宿每一晚）</span></div>
   <button class="inp dbtn" data-act="dcal"><span>${esc(dTxt(F.dates))}</span><small>${F.dates.length > 1 ? F.dates.length + ' 天' : ''}</small><i>📅</i></button>
@@ -444,7 +447,6 @@ function csv() {   // 只有自己看得到的記帳
    每項 {g 分組, name, note, amt(null＝未知), cur 'NT'|'JPY', mode, rooms, approx, opt(選項不計入), order}
    mode：total 總價÷人數、pp 每人單價×人數、room 每間×間數÷人數。人數＝trip.ppl（主辦人設定，預設 4）。 */
 const BG = ['機票', '住宿', '交通', '門票・體驗', '餐飲', '其他', '選項'];
-const BMODE = { total: '總價 ÷ 人數', pp: '每人單價 × 人數', room: '每間 × 間數 ÷ 人數' };
 let B = null;
 const pplOf = () => Math.max(1, +(cur.trip && cur.trip.ppl) || 4);
 // 人數：每一項自己填（ppl），沒填用行程的預設人數
@@ -578,17 +580,17 @@ function openBudget(id, pre) {
 function drawBudget() {
   const f = B.f, groups = BG.concat([...new Set((cur.budget || []).map(x => x.g))].filter(g => !BG.includes(g)));
   const n = pplOf(), prev = { ...f, amt: f.amt === '' ? null : f.amt };
-  $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">${f.id ? '修改預算項目' : '新增預算項目'}</b><button class="small" data-act="close">取消</button></div>
-  ${f.id ? '' : kindSeg('plan')}${f.id ? '' : '<div class="small" style="margin-top:6px">預計要花的會列在「花費」，不用選誰付；之後真的付了，打開這項按「記成實際」。</div>'}
-  <div class="lab">分組</div><select class="inp" id="bG">${groups.map(g => `<option ${g === f.g ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select>
-  <div class="lab">名稱</div><input class="inp" id="bN" value="${esc(f.name)}" placeholder="例如：2/13–14 LiVEMAX 熱海">
-  <div class="lab">說明（選填）</div><input class="inp" id="bNote" value="${esc(f.note)}" placeholder="例如：4 人一間">
-  <div class="lab">住幾晚（住宿才填，用來算每人每晚）</div><input class="inp" id="bNi" inputmode="numeric" placeholder="不是住宿就留空" value="${f.nights ? esc(f.nights) : (f.g === '住宿' && bNights(f) ? bNights(f) : '')}">
+  $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">${f.id ? '修改預算項目' : '預計要花'}</b><button class="small" data-act="close">取消</button></div>
+  ${f.id ? '' : kindSeg('plan')}
+  <div class="two2"><div><div class="lab">分組</div><select class="inp" id="bG">${groups.map(g => `<option ${g === f.g ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select></div>
+  <div><div class="lab">住幾晚<span class="small" style="font-weight:500">住宿才填</span></div><input class="inp" id="bNi" inputmode="numeric" placeholder="—" value="${f.nights ? esc(f.nights) : (f.g === '住宿' && bNights(f) ? bNights(f) : '')}"></div></div>
+  <div class="lab">名稱</div><input class="inp" id="bN" value="${esc(f.name)}" placeholder="例如：2/13–14 La Vista 熱海">
+  <div class="lab">說明（選填）</div><input class="inp" id="bNote" value="${esc(f.note)}" placeholder="例如：2 人一間，訂 2 間">
   <div class="lab">金額</div><div class="amt"><input id="bA" inputmode="decimal" placeholder="不知道就留空" value="${f.amt == null ? '' : esc(f.amt)}"><div class="cur"><button data-act="bcur" data-c="JPY" class="${f.cur === 'JPY' ? 'on' : ''}">日圓</button><button data-act="bcur" data-c="NT" class="${f.cur === 'NT' ? 'on' : ''}">台幣</button></div></div>
-  <div class="lab">計算方式</div><div class="split" style="grid-template-columns:repeat(3,1fr)">${Object.entries(BMODE).map(([k, t]) => `<button data-act="bmode" data-m="${k}" class="${f.mode === k ? 'on' : ''}">${t}</button>`).join('')}</div>
-  <div class="lab">幾個人分<span class="small" style="font-weight:500;margin-left:6px">這一項要分給幾個人</span></div><input class="inp" id="bP" inputmode="numeric" value="${esc(bPpl(f))}">
-  ${f.mode === 'room' ? `<div class="lab">間數</div><input class="inp" id="bR" inputmode="numeric" value="${esc(f.rooms || 1)}">` : ''}
-  <div class="small" style="margin-top:8px" id="bPrev">${bPrevTxt(prev)}</div>
+  <div class="lab">計算方式</div><div class="bmc">${[['total', '🧾', '總價', '÷ 人數'], ['pp', '🙋', '每人單價', '× 人數'], ['room', '🛏', '每間', '× 間數 ÷ 人數']].map(([k, i, t, d]) => `<button data-act="bmode" data-m="${k}" class="${f.mode === k ? 'on' : ''}"><i>${i}</i><b>${t}</b><small>${d}</small></button>`).join('')}</div>
+  <div class="two2${f.mode === 'room' ? '' : ' one'}"><div><div class="lab">幾個人分</div><input class="inp" id="bP" inputmode="numeric" value="${esc(bPpl(f))}"></div>
+  ${f.mode === 'room' ? `<div><div class="lab">間數</div><input class="inp" id="bR" inputmode="numeric" value="${esc(f.rooms || 1)}"></div>` : ''}</div>
+  <div class="bprev" id="bPrev">${bPrevTxt(prev)}</div>
   <label class="ck"><input type="checkbox" id="bAp" ${f.approx ? 'checked' : ''}> 金額是估的（顯示「約」）</label>
   <label class="ck"><input type="checkbox" id="bOpt" ${f.opt ? 'checked' : ''}> 選項，去了才算（不計入合計）</label>
   <div class="err" id="berr"></div><button class="btn" data-act="bsave">存檔</button>${f.id ? '<button class="btn s" data-act="breal">🧾 記成實際（記一筆）</button><button class="btn s" data-act="bdel">刪除這項</button>' : ''}`;
