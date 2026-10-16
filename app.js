@@ -194,79 +194,66 @@ async function renderJoin() {
 const pairTxt = v => Math.abs(v) < 1 ? '兩清' : (v > 0 ? '給我 ' : '我給 ') + Math.round(Math.abs(v)).toLocaleString('en-US');
 const visTag = e => ePriv(e) ? `<span class="vt me">👤 只有我</span>` : `<span class="vt sh">👥 ${e.mode === 'treat' ? '請客' : eSh(e) + ' 人分'}</span>`;
 function pExp() { return WIDE ? pExpD() : pExpM(); }
-// 依日期的列表（手機「依日期」用）
-function expDateList(c) {
-  const ex = (cur.expenses || []).slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.at || 0) - (a.at || 0));
-  let lst = '', last = '';
-  if (!ex.length) lst += `<div class="empty">還沒有任何一筆。<br>按右下角「＋ 記一筆」開始。</div>`;
-  for (const e of ex) {
-    if (e.date !== last) { last = e.date; const dt = ex.filter(x => x.date === e.date).reduce((a, x) => a + (c.mp[x.id] || 0), 0); lst += `<div class="day"><span>${fmtD(e.date)}（${wd(e.date)}）</span><span>我的份 ${nt(dt)}</span></div>`; }
-    const tag = e.mode === 'treat' ? `${mInfo(e.payer).name}請客` : e.mode === 'ratio' ? '比例' : e.mode === 'amount' ? '指定金額' : '';
-    const pv = ePriv(e), mine = c.mp[e.id] || 0;
-    lst += `<button class="it" data-act="edit" data-id="${esc(e.id)}"><div class="ic">${esc(e.icon || '🧾')}</div><div><div class="n">${esc(e.title)}${tag && !pv ? `<span class="tag">${esc(tag)}</span>` : ''}</div><div class="m">${eLabel(e) ? `<span class="bl">${esc(eLabel(e))}</span>` : ''}${eDates(e).length > 1 ? `<span class="rg">${esc(dTxt(eDates(e), false))}</span>` : ''}${visTag(e)}${pv ? '' : `${esc(mInfo(e.payer).name)} 付${mine ? `・我的份 ${nt(mine)}` : '・我沒分到'}`}${+e.uses > 0 && !pv ? `・${+e.uses} 人用` : ''}</div></div><div class="a">${money(+e.amount, e.cur)}${e.cur !== 'TWD' ? `<small>≈ ${nt(c.toNT(+e.amount, e.cur))}</small>` : ''}</div></button>`;
-  }
-  return lst;
+/* 記帳頁共用：分類色、一筆一列、整趟／那天兩塊、結算提示 */
+const ECOL = { 餐飲: '#c67139', '門票・體驗': '#3f6fa8', 交通: '#56633f', 住宿: '#7a4f8a', 機票: '#2b4c7e', 其他: '#8a3f5c', 選項: '#3f6fa8' };
+const eCol = e => ECOL[eGroup(e)] || '#9a8a76';
+function eRow(e, c) {
+  const pv = ePriv(e), mine = c.mp[e.id] || 0, col = eCol(e), g = eGroup(e) || '未分類';
+  return `<button class="er" data-act="edit" data-id="${esc(e.id)}"><span class="ic" style="background:${col}1f">${esc(e.icon || '🧾')}</span><div class="b"><div class="n">${esc(e.title)}</div><div class="m"><i style="color:${col}">${esc(g)}</i>・${pv ? '只有我' : `${esc(mInfo(e.payer).name)}付・${e.mode === 'treat' ? '請客' : eSh(e) + ' 人分'}${mine ? '' : '・我沒分到'}`}${eDates(e).length > 1 ? `・${esc(dTxt(eDates(e), false))}` : ''}</div></div><div class="a">${mine || pv ? Math.round(mine).toLocaleString('en-US') : '—'}<small>${pv ? '自己的' : `共 ${money(+e.amount, e.cur)}`}</small></div></button>`;
 }
-const LOCK = `<div class="lock">🔒 這裡只列<b>跟你有關的</b>記帳：自己的、和你一起分的。沒分到的人看不到，主辦人也看不到你自己的花費。</div>`;
-const sgn = v => Math.abs(v) < 1 ? '兩清' : (v > 0 ? '+' : '−') + Math.round(Math.abs(v)).toLocaleString('en-US');
-/* 手機：依人帳本（M4）。上方兩兩抵完的淨額＋每人卡；「依人」每個人一張卡列出影響你們之間的帳，「只有我」另一張；可切回「依日期」 */
-let EV = (() => { try { return localStorage.getItem('tt-ev') || 'p'; } catch (e) { return 'p'; } })();
-const POPEN = {};
+const exSorted = () => (cur.expenses || []).slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.at || 0) - (a.at || 0));
+const dayMine = (c, d) => (cur.expenses || []).filter(e => e.date === d).reduce((a, e) => a + (c.mp[e.id] || 0), 0);
+function dayGroups(c, ex) {   // 依日期分組：小標＋白卡
+  let h = '', last = '';
+  for (const e of ex) { if (e.date !== last) { if (last) h += '</div>'; last = e.date; h += `<div class="edh"><span>${fmtD(e.date)}（${wd(e.date)}）${e.date === todayISO() ? '・今天' : ''}</span><span>NT ${Math.round(dayMine(c, e.date)).toLocaleString('en-US')}</span></div><div class="ecard">`; } h += eRow(e, c); }
+  return last ? h + '</div>' : h;
+}
+// 第二塊的那一天：選了某天就是那天；沒選（全部）時，旅途中＝今天，否則最近一天有記帳的
+function tileDay(sel) { const D = days(cur.trip), t = todayISO(); if (sel && sel !== 'all') return sel; if (D.includes(t)) return t; const ex = exSorted(); return ex.length ? ex[0].date : (D[0] || t); }
+function heroTiles(c, d) {
+  const D = days(cur.trip), i = D.indexOf(d), n = (cur.expenses || []).length, nd = (cur.expenses || []).filter(e => e.date === d).length;
+  return `<div class="etiles"><div class="et a"><em>🧳</em><div class="k">整趟我花了</div><div class="v"><small>NT</small>${Math.round(c.own + c.shd).toLocaleString('en-US')}</div><div class="s">${n} 筆・自己的 ${Math.round(c.own).toLocaleString('en-US')}</div></div>
+    <div class="et b"><em>${d === todayISO() ? '☀️' : '🗓️'}</em><div class="k">${d === todayISO() ? '今天 ' : ''}${fmtD(d)}${d === todayISO() ? '' : `（${wd(d)}）`}</div><div class="v"><small>NT</small>${Math.round(dayMine(c, d)).toLocaleString('en-US')}</div><div class="s">${nd} 筆${i >= 0 ? `・Day ${i + 1}` : ''}</div></div></div>`;
+}
+function settleStrip(c) {
+  const P = Object.entries(c.pair).filter(([u]) => u !== me.uid); if (!P.length) return '';
+  const net = P.reduce((a, [, v]) => a + v, 0);
+  return `<a class="estl" href="#/t/${encodeURIComponent(cur.id)}/settle">⚖️<span>${Math.abs(net) < 1 ? '跟大家都兩清' : net > 0 ? `別人要給我 NT ${Math.round(net).toLocaleString('en-US')}` : `我要給別人 NT ${Math.round(-net).toLocaleString('en-US')}`}</span>結算 ›</a>`;
+}
+const LOCK = `<div class="elock">🔒 只列跟你有關的記帳（自己的、和你一起分的），沒分到的人看不到。</div>`;
+/* 手機（N3）：整趟／那天兩塊色塊、Day 1–8 小長條（點了看那天，「全部」看全部）、那天的帳 */
+let MSEL = null;
 function pExpM() {
-  const c = calc(), sel = memberList().filter(m => m.uid !== me.uid && c.pd[m.uid]).map(m => [m.uid, c.pair[m.uid] || 0]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
-  const net = sel.reduce((a, [, v]) => a + v, 0);
-  let h = head('花費記帳');
-  h += `<div class="pv-top"><div class="k">${Math.abs(net) < 1 ? (sel.length ? '跟大家都兩清' : '分帳') : net > 0 ? '別人要給我（兩兩抵完）' : '我要給別人（兩兩抵完）'}</div><div class="big ${net >= 0 ? 'pos' : 'neg'}">${Math.abs(net) < 1 ? (sel.length ? '兩清 ✓' : '—') : nt(Math.abs(net))}</div>
-    <div class="k">我這趟花了 ${nt(c.own + c.shd)}・自己的 ${nt(c.own)}</div>
-    ${sel.length ? `<div class="pcs">${sel.map(([u, v]) => `<button class="pc2" data-act="pjump" data-u="${esc(u)}">${ava(u, 28)}<span>${esc(mInfo(u).name)}</span><b class="${v >= 0 ? 'pos' : 'neg'}">${sgn(v)}</b></button>`).join('')}</div>` : ''}</div>`;
-  h += `<div class="split ev"><button data-act="ev" data-v="d" class="${EV === 'd' ? 'on' : ''}">依日期</button><button data-act="ev" data-v="p" class="${EV === 'p' ? 'on' : ''}">依人</button></div>`;
-  if (EV === 'd') h += LOCK + expDateList(c);
-  else {
-    const lim = (k, L, f) => { const o = POPEN[k], show = o ? L : L.slice(0, 3); return show.map(f).join('') + (L.length > 3 ? `<button class="pmore" data-act="pmore" data-k="${esc(k)}">${o ? '收起' : `再看 ${L.length - 3} 筆 ›`}</button>` : ''); };
-    const dOf = x => x.e ? x.e.date || '' : new Date(x.s.at || 0).toISOString().slice(0, 10);
-    for (const [u, v] of sel) {
-      const nm = esc(mInfo(u).name), L = (c.pd[u] || []).slice().sort((a, b) => dOf(b).localeCompare(dOf(a)) || ((b.e || b.s).at || 0) - ((a.e || a.s).at || 0));
-      h += `<div class="card pcard" id="pc-${esc(u)}"><div class="ph">${ava(u, 32)}<div><b>跟${nm}</b><small>影響你們之間的 ${L.length} 筆・${Math.abs(v) < 1 ? '兩清' : v > 0 ? `${nm}要給我` : `我要給${nm}`}</small></div><span class="${v >= 0 ? 'pos' : 'neg'}">${sgn(v)}</span></div>
-        ${lim(u, L, x => x.s ? `<div class="it pr2"><div class="ic">💸</div><div><div class="n">${esc(mInfo(x.s.from).name)} → ${esc(mInfo(x.s.to).name)} 已轉帳</div><div class="m">${fmtD(dOf(x))}</div></div><div class="a ${x.v >= 0 ? 'pos' : 'neg'}">${sgn(x.v)}</div></div>`
-          : `<button class="it pr2" data-act="edit" data-id="${esc(x.e.id)}"><div class="ic">${esc(x.e.icon || '🧾')}</div><div><div class="n">${esc(x.e.title)}</div><div class="m">${fmtD(x.e.date)}・${x.v > 0 ? `${nm}的份` : '你的份'}・${esc(mInfo(x.e.payer).name)} 付</div></div><div class="a ${x.v >= 0 ? 'pos' : 'neg'}">${sgn(x.v)}<small>${money(+x.e.amount, x.e.cur)}</small></div></button>`)}</div>`;
-    }
-    const mine = (cur.expenses || []).filter(ePriv).sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.at || 0) - (a.at || 0));
-    const rowM = e => `<button class="it pr2" data-act="edit" data-id="${esc(e.id)}"><div class="ic">${esc(e.icon || '🧾')}</div><div><div class="n">${esc(e.title)}</div><div class="m">${fmtD(e.date)}${eLabel(e) ? `・${esc(eLabel(e))}` : ''}</div></div><div class="a">${nt(c.mp[e.id] || 0)}${e.cur !== 'TWD' ? `<small>${yen(+e.amount)}</small>` : ''}</div></button>`;
-    h += `<div class="card pcard"><div class="ph"><span class="ava" style="background:#5a4f43">👤</span><div><b>只有我</b><small>${mine.length} 筆・別人看不到</small></div><span>${nt(c.own)}</span></div>${mine.length ? lim('me', mine, rowM) : '<div class="small" style="padding:0 14px 12px">按「＋ 記一筆」選「只有我」，就會記在這裡。</div>'}</div>`;
-    const oth = (cur.expenses || []).filter(e => !ePriv(e) && !(e.id in c.mp) && e.payer !== me.uid);   // 只是幫忙記、自己沒分到也沒付
-    if (oth.length) h += `<div class="card pcard"><div class="ph"><span class="ava" style="background:#9a8a76">✎</span><div><b>幫別人記的</b><small>${oth.length} 筆・跟你的帳無關</small></div><span></span></div>${lim('oth', oth, e => `<button class="it pr2" data-act="edit" data-id="${esc(e.id)}"><div class="ic">${esc(e.icon || '🧾')}</div><div><div class="n">${esc(e.title)}</div><div class="m">${fmtD(e.date)}・${esc(mInfo(e.payer).name)} 付・${eSh(e)} 人分</div></div><div class="a">${money(+e.amount, e.cur)}</div></button>`)}</div>`;
-    h += LOCK;
-  }
-  h += `<button class="fab" data-act="add">＋ 記一筆</button>`;
+  const c = calc(), D = days(cur.trip), ex = exSorted(), extra = [...new Set(ex.map(e => e.date))].filter(d => d && !D.includes(d)).sort();
+  // 沒選過就自動：旅途中今天、否則最近一天（每次重畫重算，資料還沒載入時不會卡在第一天）
+  const sel = MSEL || tileDay(null), td = tileDay(sel), all = D.concat(extra), mx = Math.max(1, ...all.map(d => dayMine(c, d)));
+  let h = head('記帳') + heroTiles(c, td);
+  h += `<div class="edays"><button class="edy all${sel === 'all' ? ' on' : ''}" data-act="msel" data-d="all"><div class="bar"><b>全</b></div><b>全部</b>${ex.length} 筆</button>${all.map(d => { const v = dayMine(c, d), i = D.indexOf(d), n = ex.filter(e => e.date === d).length;
+    return `<button class="edy${sel === d ? ' on' : ''}${n ? '' : ' no'}" data-act="msel" data-d="${d}"><div class="bar"><i style="height:${n ? Math.max(4, v / mx * 28) : 2}px"></i></div><b>${i >= 0 ? 'D' + (i + 1) : '＋'}</b>${fmtD(d)}</button>`; }).join('')}</div>`;
+  if (sel === 'all') { h += `<div class="ehd"><b>全部</b><span>${ex.length} 筆・NT ${Math.round(c.own + c.shd).toLocaleString('en-US')}</span></div>`; h += ex.length ? dayGroups(c, ex) : `<div class="empty">還沒有任何一筆。<br>按右下角「＋ 記一筆」開始。</div>`; }
+  else { const L = ex.filter(e => e.date === sel), i = D.indexOf(sel);
+    h += `<div class="ehd"><b>${fmtD(sel)}（${wd(sel)}）${i >= 0 ? `Day ${i + 1}` : ''}</b><span>${L.length} 筆・NT ${Math.round(dayMine(c, sel)).toLocaleString('en-US')}</span></div>`;
+    h += L.length ? `<div class="ecard">${L.map(e => eRow(e, c)).join('')}</div>` : `<div class="empty">這天還沒有記帳。</div>`; }
+  h += settleStrip(c) + LOCK + `<button class="fab" data-act="add">＋ 記一筆</button>`;
   return h;
 }
-/* 電腦（wide）：三欄（D1）。左＝日期、中＝那天的帳、右＝摘要＋常駐的「記一筆」表單（QF，重畫時整個節點搬回來，輸入不會不見） */
+/* 電腦（wide，E3）：三欄。左＝日期、中＝整趟／那天兩塊＋那天的帳、右＝常駐的「記一筆」表單（QF，重畫時整個節點搬回來，輸入不會不見）＋結算提示 */
 let DSEL = null;
 const QF = document.createElement('div'); QF.id = 'qf'; QF.className = 'qf';
 function pExpD() {
-  const c = calc(), D = days(cur.trip), ex = (cur.expenses || []).slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.at || 0) - (a.at || 0));
+  const c = calc(), D = days(cur.trip), ex = exSorted();
   const extra = [...new Set(ex.map(e => e.date))].filter(d => d && !D.includes(d)).sort();
   if (DSEL == null) DSEL = D.includes(todayISO()) ? todayISO() : 'all';
-  const dv = d => ex.filter(e => e.date === d).reduce((a, e) => a + (c.mp[e.id] || 0), 0), mx = Math.max(1, ...D.concat(extra).map(dv));
-  const dRow = (d, lab) => { const v = dv(d), n = ex.filter(e => e.date === d).length; return `<button class="dd${DSEL === d ? ' on' : ''}${n ? '' : ' no'}" data-act="dsel" data-d="${d}"><span>${lab}<small>${fmtD(d)}（${wd(d)}）${n ? `・${n} 筆` : ''}</small></span><b>${n ? Math.round(v).toLocaleString('en-US') : '—'}</b>${v ? `<i style="width:calc((100% - 20px) * ${(v / mx).toFixed(3)})"></i>` : ''}</button>`; };
+  const dRow = (d, lab) => { const v = dayMine(c, d), n = ex.filter(e => e.date === d).length; return `<button class="dd${DSEL === d ? ' on' : ''}${n ? '' : ' no'}" data-act="dsel" data-d="${d}"><span>${lab}<small>${fmtD(d)}（${wd(d)}）${n ? `・${n} 筆` : ''}</small></span><b>${n ? Math.round(v).toLocaleString('en-US') : '—'}</b></button>`; };
   const L = `<div class="card dl"><div class="hd">日期</div><button class="dd all${DSEL === 'all' ? ' on' : ''}" data-act="dsel" data-d="all"><span>全部<small>${ex.length} 筆</small></span><b>${Math.round(c.own + c.shd).toLocaleString('en-US')}</b></button>
     ${D.map((d, i) => dRow(d, 'Day ' + (i + 1))).join('')}${extra.length ? `<div class="hd" style="margin-top:6px">行程以外</div>${extra.map(d => dRow(d, fmtD(d))).join('')}` : ''}<div class="dn">數字＝我的份（台幣）</div></div>`;
-  const row = e => { const pv = ePriv(e), mine = c.mp[e.id] || 0;
-    return `<button class="lr" data-act="edit" data-id="${esc(e.id)}"><span class="ic">${esc(e.icon || '🧾')}</span><div><b>${esc(e.title)}</b><div class="m">${eLabel(e) ? `<span class="bl">${esc(eLabel(e))}</span>` : ''}${eDates(e).length > 1 ? `<span class="rg">${esc(dTxt(eDates(e), false))}</span>` : ''}${visTag(e)}${pv ? '' : `${esc(mInfo(e.payer).name)} 付${mine ? '' : '・我沒分到'}`}</div></div><div class="a">${mine || pv ? nt(mine) : '—'}<small>${pv ? '自己的' : `共 ${money(+e.amount, e.cur)}${e.cur !== 'TWD' ? `・≈${nt(c.toNT(+e.amount, e.cur))}` : ''}`}</small></div><span class="ed">✎</span></button>`; };
-  let M = '';
-  if (DSEL === 'all') { M += `<div class="lh"><b>全部</b><span>${ex.length} 筆・我的份 ${nt(c.own + c.shd)}</span></div>`; let last = '';
-    if (!ex.length) M += `<div class="card empty">還沒有任何一筆。用右邊的表單記第一筆。</div>`;
-    for (const e of ex) { if (e.date !== last) { if (last) M += '</div>'; last = e.date; M += `<div class="dh"><span>${fmtD(e.date)}（${wd(e.date)}）</span><span>我的份 ${nt(dv(e.date))}</span></div><div class="card">`; } M += row(e); }
-    if (last) M += '</div>';
-  } else { const T = ex.filter(e => e.date === DSEL), i = D.indexOf(DSEL);
-    M += `<div class="lh"><b>${fmtD(DSEL)}（${wd(DSEL)}）${i >= 0 ? `Day ${i + 1}` : ''}</b><span>${T.length} 筆・我的份 ${nt(dv(DSEL))}</span></div>`;
-    M += T.length ? `<div class="card">${T.map(row).join('')}</div>` : `<div class="card empty">這天還沒有記帳。<br>右邊的表單已經帶好這一天。</div>`; }
+  let M = heroTiles(c, tileDay(DSEL));
+  if (DSEL === 'all') { M += `<div class="ehd"><b>全部</b><span>${ex.length} 筆・我的份 NT ${Math.round(c.own + c.shd).toLocaleString('en-US')}</span></div>`; M += ex.length ? dayGroups(c, ex) : `<div class="empty">還沒有任何一筆。用右邊的表單記第一筆。</div>`; }
+  else { const T = ex.filter(e => e.date === DSEL), i = D.indexOf(DSEL);
+    M += `<div class="ehd"><b>${fmtD(DSEL)}（${wd(DSEL)}）${i >= 0 ? `Day ${i + 1}` : ''}</b><span>${T.length} 筆・NT ${Math.round(dayMine(c, DSEL)).toLocaleString('en-US')}</span></div>`;
+    M += T.length ? `<div class="ecard">${T.map(e => eRow(e, c)).join('')}</div>` : `<div class="empty">這天還沒有記帳。<br>右邊的表單已經帶好這一天。</div>`; }
   M += LOCK;
-  const P = memberList().filter(m => m.uid !== me.uid && c.pd[m.uid]).map(m => [m.uid, c.pair[m.uid] || 0]).sort((a, b) => b[1] - a[1]), net = P.reduce((a, [, v]) => a + v, 0);
-  const R = `<div class="sum dsum"><div class="k">我這趟花了</div><div class="v">${nt(c.own + c.shd)}</div><div class="k">自己的 ${nt(c.own)}・分帳我的份 ${nt(c.shd)}</div>
-    <div class="k" style="margin-top:8px">${Math.abs(net) < 1 ? '分帳：兩清' : net > 0 ? `別人要給我 <b class="pos">${nt(net)}</b>` : `我要給別人 <b class="neg">${nt(-net)}</b>`}</div>
-    ${P.length ? `<div class="dpp">${P.map(([u, v]) => `<div>${ava(u, 22)}<span>${esc(mInfo(u).name)}<b class="${v >= 0 ? 'pos' : 'neg'}">${pairTxt(v)}</b></span></div>`).join('')}</div>` : ''}</div><div id="qfHost"></div>`;
-  return head('花費記帳') + `<div class="g3"><div class="g3l">${L}</div><div class="g3m">${M}</div><div class="g3r">${R}</div></div>`;
+  return head('花費記帳') + `<div class="g3"><div class="g3l">${L}</div><div class="g3m">${M}</div><div class="g3r"><div id="qfHost"></div>${settleStrip(c)}</div></div>`;
 }
 
 /* 記一筆／修改 */
@@ -727,9 +714,7 @@ document.addEventListener('click', async ev => {
       return go('#/t/' + encodeURIComponent(id) + '/exp');
     }
     if (a === 'add') return openExp();
-    if (a === 'ev') { EV = el.dataset.v; try { localStorage.setItem('tt-ev', EV); } catch (e) {} return render(); }
-    if (a === 'pmore') { POPEN[el.dataset.k] = !POPEN[el.dataset.k]; return render(); }
-    if (a === 'pjump') { if (EV !== 'p') { EV = 'p'; render(); } const t = document.getElementById('pc-' + el.dataset.u); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+    if (a === 'msel') { MSEL = el.dataset.d; return render(); }
     if (a === 'dsel') { DSEL = el.dataset.d; if (F && F.inline && DSEL !== 'all') { readExp(); if (!F.amount && !F.title.trim()) { F.dates = [DSEL]; F.date = DSEL; drawExp(); } } return render(); }
     if (a === 'edit') return openExp(el.dataset.id);
     if (a === 'close') return closeSheet();
