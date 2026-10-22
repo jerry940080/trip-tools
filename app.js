@@ -58,6 +58,9 @@ function calc() {
   // 只看得到跟自己有關的記帳（vis），所以結算改成「我跟每個人之間」：pair[u] > 0＝u 要給我，< 0＝我要給 u；pd[u]＝明細
   const pair = {}, pd = {}, mp = {}; let own = 0, shd = 0;
   const add = (u, v, x) => { pair[u] = (pair[u] || 0) + v; (pd[u] = pd[u] || []).push({ ...x, v }); };
+  // 家庭之間：hh[k] > 0＝k 家要給我家；hd[k]＝明細
+  const myH = hhOf(me.uid), hh = {}, hd = {};
+  const hadd = (k, v, x) => { hh[k] = (hh[k] || 0) + v; (hd[k] = hd[k] || []).push({ ...x, v }); };
   for (const e of cur.expenses || []) {
     const v = toNT(+e.amount || 0, e.cur); total += v;
     paid[e.payer] = (paid[e.payer] || 0) + v;
@@ -67,22 +70,35 @@ function calc() {
       owe[u] = (owe[u] || 0) + p;
       if (u === me.uid) { mp[e.id] = p; if (ePriv(e)) own += p; else shd += p; }
       if (u !== e.payer) { if (e.payer === me.uid) add(u, p, { e, who: u }); else if (u === me.uid) add(e.payer, -p, { e, who: me.uid }); }
+      const hp = hhOf(e.payer), hu = hhOf(u);
+      if (hp !== hu) { if (hp === myH) hadd(hu, p, { e, who: u }); else if (hu === myH) hadd(hp, -p, { e, who: u }); }
     }
   }
   const bal = {}; Object.keys({ ...paid, ...owe }).forEach(u => bal[u] = (paid[u] || 0) - (owe[u] || 0));
   for (const s of cur.settles || []) { bal[s.from] = (bal[s.from] || 0) + s.amount; bal[s.to] = (bal[s.to] || 0) - s.amount;
-    if (s.to === me.uid) add(s.from, -s.amount, { s }); else if (s.from === me.uid) add(s.to, s.amount, { s }); }
+    if (s.to === me.uid) add(s.from, -s.amount, { s }); else if (s.from === me.uid) add(s.to, s.amount, { s });
+    const hf = hhOf(s.from), ht = hhOf(s.to);
+    if (hf !== ht) { if (ht === myH) hadd(hf, -s.amount, { s }); else if (hf === myH) hadd(ht, s.amount, { s }); } }
   // 最少轉帳筆數：欠最多的先付給收最多的
   const cr = Object.entries(bal).filter(x => x[1] < -1).map(x => [...x]), dr = Object.entries(bal).filter(x => x[1] > 1).map(x => [...x]);
   cr.sort((a, b) => a[1] - b[1]); dr.sort((a, b) => b[1] - a[1]);
   const tr = []; let i = 0, j = 0;
   while (i < cr.length && j < dr.length) { const x = Math.min(-cr[i][1], dr[j][1]); tr.push({ from: cr[i][0], to: dr[j][0], amount: x }); cr[i][1] += x; dr[j][1] -= x; if (cr[i][1] > -1) i++; if (dr[j][1] < 1) j++; }
-  return { rate, total, paid, owe, bal, tr, toNT, pair, pd, mp, own, shd };
+  return { rate, total, paid, owe, bal, tr, toNT, pair, pd, mp, own, shd, hh, hd, myH };
 }
 // 看得到這筆的人：記帳的人＋付錢的人＋有分到的人（舊資料沒有 vis 就現算）
 const eVis = e => Array.isArray(e.vis) && e.vis.length ? e.vis : [...new Set([e.by, e.payer, ...Object.keys(e.shares || {})].filter(Boolean))];
 const ePriv = e => eVis(e).length === 1;   // 只有自己
-const mkVis = d => [...new Set([d.by, d.payer, ...Object.keys(d.shares || {})].filter(Boolean))];
+const mkVis0 = d => [...new Set([d.by, d.payer, ...Object.keys(d.shares || {})].filter(Boolean))];
+// 家庭：主辦人在「成員」頁把人分成一家一家（trip.fams＝{uid: 家庭名稱}）；沒分到家庭的人自己一家。
+// 跟別人分的帳，看得到的人會加上這些人的家人（「只有我」的帳不擴大）；結算可以切「依家庭」看家庭之間的帳
+const famOf = u => (cur && cur.trip && cur.trip.fams || {})[u] || '';
+const hhOf = u => famOf(u) ? 'f:' + famOf(u) : 'u:' + u;
+const hhMembers = k => memberList().filter(m => hhOf(m.uid) === k).map(m => m.uid);
+const hhName = k => k.startsWith('f:') ? k.slice(2) : mInfo(k.slice(2)).name;
+const hasFams = () => memberList().some(m => famOf(m.uid));
+const famExpand = L => { const H = new Set(L.map(hhOf)); return [...new Set([...L, ...memberList().filter(m => H.has(hhOf(m.uid))).map(m => m.uid)])]; };
+const mkVis = d => { const v = mkVis0(d); return v.length > 1 ? famExpand(v) : v; };
 
 /* ───────── 路由 ───────── */
 function parse() {
@@ -100,11 +116,24 @@ function openTrip(id) {
   closeTrip();
   cur = { id, trip: null, members: [], expenses: [], settles: [], restos: [], budget: [], unsub: [], err: null, loaded: false };
   const c = cur, fail = e => { if (c !== cur) return; c.err = e; render(); };
-  c.unsub.push(api.watchTrip(id, t => { if (c !== cur) return; c.trip = t; c.loaded = true; if (t && me && t.owner === me.uid) migrateVis(c); render(); }, fail));
+  c.unsub.push(api.watchTrip(id, t => { if (c !== cur) return; c.trip = t; c.loaded = true; if (t && me && t.owner === me.uid) migrateVis(c); famFix(c); render(); }, fail));
   for (const sub of ['members', 'expenses', 'settles', 'restos', 'budget'])
-    c.unsub.push(api.watch(id, sub, rows => { if (c !== cur) return; c[sub] = rows; if (sub === 'budget') c.bErr = null; render(); },
+    c.unsub.push(api.watch(id, sub, rows => { if (c !== cur) return; c[sub] = rows; if (sub === 'budget') c.bErr = null; if (sub === 'expenses' || sub === 'settles' || sub === 'members') famFix(c); render(); },
       sub === 'budget' ? e => { if (c !== cur) return; c.bErr = e; render(); } : fail,   // 預算讀不到（規則還沒更新）只影響預算頁
       sub === 'expenses' || sub === 'settles' ? ['vis', me.uid, 'array-contains'] : undefined));   // 記帳、轉帳只讀自己在 vis 裡的
+}
+// 分了家庭之後，把自己記的、跟別人分的帳與轉帳補上家人（規則只讓記帳的人改；只會加人，不會把人拿掉）
+function famFix(c) {
+  clearTimeout(c.ffT); c.ffT = setTimeout(async () => {
+    if (c !== cur || !c.trip || !me || !hasFams()) return; c.ffDone = c.ffDone || {};
+    for (const sub of ['expenses', 'settles']) for (const r of c[sub] || []) {
+      if (r.by !== me.uid) continue;
+      const base = sub === 'settles' ? [r.from, r.to] : mkVis0(r); if (base.length < 2) continue;
+      const cv = Array.isArray(r.vis) ? r.vis : [], want = famExpand([...new Set([...cv, ...base])]);
+      const key = sub + r.id + want.join(); if (want.every(u => cv.includes(u)) || c.ffDone[key]) continue;
+      c.ffDone[key] = 1; try { await api.update(c.id, sub, r.id, { vis: want }); } catch (e) {}
+    }
+  }, 600);
 }
 // 舊資料補 vis：新規則上線前，主辦人打開時把沒有 vis 的記帳、轉帳補上（舊規則下主辦人讀得到、改得到全部）。
 // 新規則上線後 getAll 會被拒絕，就當作已經補完。結果顯示在「成員」頁，告訴主辦人什麼時候可以貼新規則。
@@ -114,7 +143,7 @@ async function migrateVis(c) {
     for (const sub of ['expenses', 'settles']) {
       const rows = await api.getAll(c.id, sub);
       for (const r of rows) { if (Array.isArray(r.vis) && r.vis.length) continue;
-        const vis = sub === 'settles' ? [...new Set([r.from, r.to, r.by].filter(Boolean))] : mkVis(r);
+        const vis = sub === 'settles' ? [...new Set([r.from, r.to, r.by].filter(Boolean))] : mkVis0(r);
         await api.update(c.id, sub, r.id, { vis }); c.mig.n++; }
     }
     c.mig.st = 'ok';
@@ -348,7 +377,7 @@ function drawExp() {
 // 跟別人分：列出存檔後看得到這筆的人
 function visBox() {
   const sh = F.mode === 'treat' ? { [F.payer]: 1 } : F.shares, V = mkVis({ by: F.by || me.uid, payer: F.payer, shares: sh }), no = memberList().filter(m => !V.includes(m.uid));
-  return `<div class="visbox">👁 <b>看得到這筆的人：${V.map(u => esc(mInfo(u).name)).join('、')}</b><br>＝記帳的人＋付錢的人＋有分到的人。${no.length ? no.map(m => esc(m.name)).join('、') + ' 看不到。' : ''}</div>`;
+  return `<div class="visbox">👁 <b>看得到這筆的人：${V.map(u => esc(mInfo(u).name)).join('、')}</b><br>＝記帳的人＋付錢的人＋有分到的人${hasFams() ? '，再加上他們的家人' : ''}。${no.length ? no.map(m => esc(m.name)).join('、') + ' 看不到。' : ''}</div>`;
 }
 // 日期（可複選）：expenses 存 dates（排序好的陣列）＋ date＝第一天（排序、每日小計、舊版相容）
 function eDates(e) { if (Array.isArray(e.dates) && e.dates.length) return e.dates.slice().sort(); if (e.date2 && e.date2 > e.date) { const o = []; for (let d = e.date; d <= e.date2; d = dNext(d, 1)) o.push(d); return o; } return [e.date]; }
@@ -417,14 +446,31 @@ function pairLines(u, net) {   // 明細：「おでん 妹妹的份 420 ＋ 咖
   return L.map((x, i) => { const pos = x.v * sg >= 0, lab = x.s ? (x.v > 0 ? '你已轉給他' : '他已轉給你') : `${x.e.title} ${x.who === me.uid ? '你' : mInfo(x.who).name}的份`;
     return `${i ? (pos ? ' ＋ ' : ' − ') : pos ? '' : '− '}${esc(lab)} ${Math.round(Math.abs(x.v)).toLocaleString('en-US')}`; }).join('');
 }
+function hhLines(k, net) {   // 家庭明細：「COMPASS STAY 叔叔的份 3,000 ＋ … − 踊子 你的份 1,200」
+  const sg = net >= 0 ? 1 : -1, L = (calc().hd[k] || []);
+  return L.map((x, i) => { const pos = x.v * sg >= 0, lab = x.s ? `${mInfo(x.s.from).name} 轉給 ${mInfo(x.s.to).name}` : `${x.e.title} ${x.who === me.uid ? '你' : mInfo(x.who).name}的份（${mInfo(x.e.payer).name} 付）`;
+    return `${i ? (pos ? ' ＋ ' : ' − ') : pos ? '' : '− '}${esc(lab)} ${Math.round(Math.abs(x.v)).toLocaleString('en-US')}`; }).join('');
+}
+const SV = () => { try { return localStorage.getItem('tt-sv') || 'fam'; } catch (e) { return 'fam'; } };
 function pSettle() {
-  const c = calc(), L = memberList().filter(m => m.uid !== me.uid);
+  const c = calc(), L = memberList().filter(m => m.uid !== me.uid), fam = hasFams() && SV() === 'fam';
   let h = head('結算'), A = '', B = '';
+  if (hasFams()) A += `<div class="seg sv"><button data-act="sv" data-v="fam" class="${fam ? 'on' : ''}">🏠 依家庭</button><button data-act="sv" data-v="one" class="${fam ? '' : 'on'}">👤 依個人</button></div>`;
   A += `<div class="rate"><span>匯率　1 台幣 ＝ <input id="rate" inputmode="decimal" value="${esc(c.rate)}"> 日圓</span><button class="lnk" data-act="rate">更新</button></div>`;
+  if (fam) {
+    const mine = hhMembers(c.myH), K = [...new Set(memberList().map(m => hhOf(m.uid)))].filter(k => k !== c.myH && c.hd[k]).map(k => [k, c.hh[k] || 0]).sort((a, b) => b[1] - a[1]), due = K.filter(x => Math.abs(x[1]) >= 1);
+    // 記轉帳：我跟對方家裡跟我帳最多的那個人之間（每筆轉帳仍是兩個人之間，家人都看得到）
+    const rep = k => { const M = hhMembers(k); return M.slice().sort((a, b) => Math.abs(c.pair[b] || 0) - Math.abs(c.pair[a] || 0))[0] || M[0]; };
+    A += `<div class="card"><div style="font-weight:800;margin-bottom:4px">${K.length ? `${esc(hhName(c.myH))}${mine.length > 1 ? '' : '（我）'}跟每一家之間的帳${due.length ? '' : '：都兩清了 🎉'}` : '還沒有跨家庭的帳'}</div>
+      <div class="small">同一家人之間的帳不算；兩家之間互相抵掉。我家：${mine.map(u => esc(mInfo(u).name)).join('、')}。</div>
+      ${K.map(([k, v]) => { const s = Math.abs(v) < 1 ? 0 : v > 0 ? 1 : -1, nm = esc(hhName(k)), M = hhMembers(k), r = rep(k);
+        return `<div class="pr"><div class="h"><span class="hav">${M.slice(0, 3).map(u => ava(u, 26)).join('')}</span><div class="t">${s > 0 ? `${nm} 要給我家` : s < 0 ? `我家要給 ${nm}` : `${nm}・兩清 ✓`}<div class="small" style="font-weight:400">${M.map(u => esc(mInfo(u).name)).join('、')}</div></div>${s ? `<div class="v">${nt(Math.abs(v))}<div class="small" style="font-weight:400">≈ ${yen(Math.abs(v) * c.rate)}</div></div><button class="sbtn" data-act="paid" data-f="${esc(s > 0 ? r : me.uid)}" data-t="${esc(s > 0 ? me.uid : r)}" data-a="${Math.round(Math.abs(v))}">${s > 0 ? '已收到' : '已付給他們'}</button>` : ''}</div><div class="d">明細：${hhLines(k, v)}</div></div>`; }).join('')}</div>`;
+  } else {
   const P = L.filter(m => c.pd[m.uid]).map(m => [m.uid, c.pair[m.uid] || 0]).sort((a, b) => b[1] - a[1]), due = P.filter(x => Math.abs(x[1]) >= 1);
-  A += `<div class="card"><div style="font-weight:800;margin-bottom:4px">${P.length ? `我跟每個人之間的帳${due.length ? '' : '：都兩清了 🎉'}` : '還沒有跟別人分的帳'}</div><div class="small">只算你和對方都有分到的記帳，兩人之間互相抵掉。收到錢按「已收到」、付完按「已付給他」，這筆紀錄只有你們兩個看得到。</div>
+  A += `<div class="card"><div style="font-weight:800;margin-bottom:4px">${P.length ? `我跟每個人之間的帳${due.length ? '' : '：都兩清了 🎉'}` : '還沒有跟別人分的帳'}</div><div class="small">只算你和對方都有分到的記帳，兩人之間互相抵掉。收到錢按「已收到」、付完按「已付給他」，這筆紀錄只有你們兩個${hasFams() ? '（和你們的家人）' : ''}看得到。</div>
     ${P.map(([u, v]) => { const s = Math.abs(v) < 1 ? 0 : v > 0 ? 1 : -1, nm = esc(mInfo(u).name);
       return `<div class="pr"><div class="h">${ava(u)}<div class="t">${s > 0 ? `${nm} 要給你` : s < 0 ? `你要給 ${nm}` : `${nm}・兩清 ✓`}</div>${s ? `<div class="v">${nt(Math.abs(v))}<div class="small" style="font-weight:400">≈ ${yen(Math.abs(v) * c.rate)}</div></div><button class="sbtn" data-act="paid" data-f="${esc(s > 0 ? u : me.uid)}" data-t="${esc(s > 0 ? me.uid : u)}" data-a="${Math.round(Math.abs(v))}">${s > 0 ? '已收到' : '已付給他'}</button>` : ''}</div><div class="d">明細：${pairLines(u, v)}</div></div>`; }).join('')}</div>`;
+  }
   const S = (cur.settles || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0));
   if (S.length) A += `<div class="day"><span>已付的轉帳</span></div><div class="card">${S.map(s => `<div class="tr">${ava(s.from)}<span class="arr">→</span>${ava(s.to)}<div class="v">${nt(s.amount)}<div class="small" style="font-weight:400">${esc(mInfo(s.from).name)} → ${esc(mInfo(s.to).name)}</div></div><button class="small" data-act="unpaid" data-id="${esc(s.id)}">取消</button></div>`).join('')}</div>`;
   const b = c.bal[me.uid] || 0;
@@ -674,6 +720,7 @@ async function saveResto() {
 function pMem() {
   const L = memberList(), own = isOwner();
   let h = head('成員'), A = `<div class="card">${L.map(m => `<div class="mrow">${ava(m.uid)}<b>${esc(m.name)}${m.uid === me.uid ? '（我）' : ''}</b><span class="r">${m.role === 'owner' ? '主辦人' : '成員'}${own && m.email ? '<br>' + esc(m.email) : ''}</span>${own && m.uid !== me.uid ? `<button class="small" data-act="kick" data-u="${esc(m.uid)}" style="margin-left:6px">移除</button>` : ''}</div>`).join('')}</div>`;
+  A += famCard(L, own);
   let B = '';
   if (own) B += `<div class="card"><b>邀請連結</b><div class="small" style="margin-top:4px">傳到 LINE 群組，家人點開、用 Google 登入就會加入這趟。</div><div id="inv"><div class="small" style="margin-top:8px">讀取中…</div></div></div>`;
   else B += `<div class="card small">要邀請其他人，請主辦人 ${esc((L.find(m => m.role === 'owner') || {}).name || '')} 產生邀請連結。</div>`;
@@ -683,6 +730,21 @@ function pMem() {
   if (own) setTimeout(drawInvite, 0);
   return h + cols(A, B);
 }
+// 家庭：主辦人幫每個人選「哪一家」；結算可以依家庭算，跟別人分的帳家人也看得到
+function famCard(L, own) {
+  const names = [...new Set(L.map(m => famOf(m.uid)).filter(Boolean))];
+  const opt = m => `<select data-fam="${esc(m.uid)}"><option value="">自己一家</option>${names.map(n => `<option${famOf(m.uid) === n ? ' selected' : ''}>${esc(n)}</option>`).join('')}<option value="__new">＋ 新的家庭…</option></select>`;
+  const H = [...new Set(L.map(m => hhOf(m.uid)))];
+  return `<div class="card fam"><b>🏠 家庭</b><div class="small" style="margin-top:4px">同一家的人結算時算在一起（結算頁可切「依家庭／依個人」），跟別人分的帳家人也看得到；「只有我」的帳還是只有自己看得到。${own ? '' : '由主辦人設定。'}</div>
+    ${own ? L.map(m => `<div class="mrow">${ava(m.uid)}<b>${esc(m.name)}</b><span class="r">${opt(m)}</span></div>`).join('')
+      : H.map(k => `<div class="mrow"><span class="hav">${hhMembers(k).map(u => ava(u, 26)).join('')}</span><b>${esc(hhName(k))}</b><span class="r">${hhMembers(k).map(u => esc(mInfo(u).name)).join('、')}</span></div>`).join('')}</div>`;
+}
+document.addEventListener('change', async ev => {
+  const s = ev.target.closest('select[data-fam]'); if (!s || !cur || !isOwner()) return;
+  let v = s.value; if (v === '__new') { v = (prompt('家庭名稱（例如：王家）') || '').trim(); if (!v) return render(); }
+  const fams = { ...(cur.trip.fams || {}) }; if (v) fams[s.dataset.fam] = v; else delete fams[s.dataset.fam];
+  try { await api.updateTrip(cur.id, { fams }); toast('已更新家庭'); } catch (e) { toast(errMsg(e)); }
+});
 async function drawInvite() {
   const box = $('#inv'); if (!box) return;
   let inv = null; try { inv = await api.getInvite(cur.id); } catch (e) {}
@@ -764,8 +826,9 @@ document.addEventListener('click', async ev => {
       if (d.ppl && !cur.trip.ppl) await api.updateTrip(cur.id, { ppl: d.ppl });
       for (const it of d.items) await api.add(cur.id, 'budget', { ...it, by: me.uid, at: Date.now() });
       return toast(`已匯入 ${d.items.length} 項`); }
+    if (a === 'sv') { try { localStorage.setItem('tt-sv', el.dataset.v); } catch (e) {} return render(); }
     if (a === 'rate') { const v = +$('#rate').value; if (!(v > 0)) return toast('匯率要大於 0'); await api.updateTrip(cur.id, { rate: v }); return toast('匯率已更新'); }
-    if (a === 'paid') { const f = el.dataset.f, t = el.dataset.t; bg(api.add(cur.id, 'settles', { from: f, to: t, amount: +el.dataset.a, at: Date.now(), by: me.uid, vis: [f, t] })); return toast('已記成一筆轉帳'); }
+    if (a === 'paid') { const f = el.dataset.f, t = el.dataset.t; bg(api.add(cur.id, 'settles', { from: f, to: t, amount: +el.dataset.a, at: Date.now(), by: me.uid, vis: famExpand([f, t]) })); return toast('已記成一筆轉帳'); }
     if (a === 'unpaid') { bg(api.remove(cur.id, 'settles', el.dataset.id)); return; }
     if (a === 'csv') return csv();
     if (a === 'rtab') { RTAB = el.dataset.k; return render(); }
