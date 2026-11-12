@@ -766,7 +766,8 @@ document.addEventListener('click', async ev => {
       const ex = await api.getTrip(repo).catch(e => 'deny');   // 別人建的、自己不是成員 → 讀不到
 
       if (ex) return toast('這趟已經有人建立了');
-      await api.createTrip(repo, { title: m.title, start: m.start || '', end: m.end || '', color: m.color || '#c67139', cover: m.cover || '', owner: me.uid, rate: 4.8, createdAt: Date.now() });
+      try { await api.createTrip(repo, { title: m.title, start: m.start || '', end: m.end || '', color: m.color || '#c67139', cover: m.cover || '', owner: me.uid, rate: 4.8, createdAt: Date.now() }); }
+      catch (e) { if (e && e.code === 'permission-denied') return toast('只有網站主人可以建立新的一趟'); throw e; }
       await api.set(repo, 'members', me.uid, { uid: me.uid, name: me.name, photo: me.photo, email: me.email, role: 'owner', joinedAt: Date.now() });
       await api.setUserTrip(me.uid, repo, { title: m.title, start: m.start || '', end: m.end || '', color: m.color || '', cover: m.cover || '', role: 'owner' });
       return go('#/t/' + encodeURIComponent(repo) + '/mem');

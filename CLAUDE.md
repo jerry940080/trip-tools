@@ -201,3 +201,14 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
    邀請連結帶 `?openExternalBrowser=1`（LINE 會改用預設瀏覽器開）；LINE／FB／IG 內建瀏覽器另顯示「請改用 Safari 或 Chrome」提示，因為 Google 不准在內建瀏覽器登入（403 disallowed_useragent）。
 2. （已完成 2026-10-12）正式名單接到行程網站的餐廳頁。其他行程網站要接的話，照 IzuAtami-trip CLAUDE.md 變更（三十九）做。
 3. 記帳可考慮：照片收據、更多幣別。（依類別統計已由「記帳 ↔ 花費同步」完成。）
+
+## 只有網站主人能建立新的一趟（2026-11-12）
+使用者打算把行程網站分享到旅遊版，資安盤點發現：任何人用 Google 登入後都能建立行程（`trips/{t}` 的 create 只檢查 owner 是自己），
+陌生人可以亂建行程佔掉 Firebase 免費額度，或搶先用使用者其他行程的 repo 名稱（例如 `Oita_Fukoka_2026`）建立，讓使用者之後建不了。
+- `firestore.rules` 新增 `isSiteOwner()`：登入者必須是 `trips/IzuAtami-trip` 的 `owner`。`trips/{t}` 的 create 改成 `isSiteOwner() && owner == 自己`。
+  **注意**：這條規則靠 `IzuAtami-trip` 這筆文件判斷誰是主人；那筆文件被刪掉的話，就沒有人能建立新的一趟（要改規則裡的路徑）。
+- `app.js` 建立時被規則擋下（`permission-denied`）改顯示「只有網站主人可以建立新的一趟」。
+- 加入既有行程（邀請碼）、記帳、推薦餐廳都不受影響。
+- **使用者要做**：把新的 `firestore.rules` 整段貼到 Firebase 主控台 → Firestore Database → 規則 → 發布。
+- 驗證：Firebase 官方模擬器（`firebase emulators:exec` ＋ `@firebase/rules-unit-testing`），IzuAtami-trip 對話 scratchpad `rules/t.mjs` 8 項全過
+  （陌生人、未登入不能建立；主人可以建立、不能替別人建立；建立後可寫成員；讀取規則不變）；同一組測試對舊規則會重現「陌生人能建立」。
