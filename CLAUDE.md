@@ -210,6 +210,10 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
 - **規則**：`photos` 成員可讀、只有主辦人可寫（和 `budget` 一樣）。`mock.js` 同步。**使用者要把新的 `firestore.rules` 貼到 Firebase 主控台發布。**
 - **畫面**：獨立開啟多一個「照片」分頁（`pPhoto`，六個分頁；嵌入模式不加）。主辦人：選卡片（下拉清單讀 `/<repo>/cards.json`＝`{key: 名稱}`，讀不到就手打 key）→ 選照片（可多張，`accept` 只收 jpeg/png/webp，iPhone 會自動把 HEIC 轉成 JPEG）→ 逐張縮圖上傳，進度在 `#phprog`。
   下面依卡片分組的縮圖格（`.phgrid`），主辦人每張可改卡片（`select[data-phcard]`）、設為第一張（`phfirst`：order 設成最小減一）、刪除；點縮圖開大圖 `#phv`。成員只能看。上方顯示張數與約略大小（免費額度 1 GB）。
+- **2026-11-16 第二版：備註、哪一天、時間**（使用者：有些照片是臨時拍的回憶，沒對到哪一站，上傳時要能加備註）。
+  上傳卡多三欄：哪一天（`day`，0＝不指定；選項依 trip 的 start–end 產生）、時間（`t`，HH:MM 選填）、備註（`note`，整批共用）。
+  每張的覆蓋列多「天」下拉（`select[data-phday]`）與 📝（`phnote`，prompt 改備註）；有備註的縮圖上方黃底顯示。分組改成 `phGroupKey`：有卡片→卡片、沒卡片但有天→「Day N 隨手拍」、都沒有→私人相簿。縮圖格手機改兩欄。`app.js?v=20261116b`。
+  回憶錄網站：`note` 變成照片下的手寫註記；`card` 空、`day` 有的變成那一天的「隨手拍」張，有 `t` 就排進當天順序。
 - `KNOWN` 加 `Oita_Fukoka_2026`、`2027-taiwan`；`openTrip` 多訂閱 `photos`（讀不到只影響照片頁，`cur.phErr`）。`index.html` 的 `app.js?v=20261116a`，分頁列改六欄。
 - 回憶錄網站那邊：登入後讀同一個集合，把 `card` 對到的照片併進卡片（做法記在 Oita_Fukoka_2026 的 CLAUDE.md）。
 - 驗證：本機把 trip-tools 與 Oita_Fukoka_2026 symlink 到同一個資料夾起 http.server，Playwright `?mock=1&as=哥哥` 建立行程 → 照片頁上傳 2 張（46 KB、193 KB）→ 選金鱗湖再上傳 1 張 → 分組顯示、看大圖；`?as=路人` 進不去。真正的 Firebase 要使用者上線後測。

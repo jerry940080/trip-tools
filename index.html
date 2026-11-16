@@ -227,8 +227,8 @@ html.wide .toast{top:16px}
 .f3 .elock{margin:0 4px}.f3 .empty{margin:0}
 @media (max-width:1060px){.f3{grid-template-columns:250px minmax(0,1fr);gap:16px}.f3l{padding:16px}.f3big b{font-size:36px}.f3mini b{font-size:18px}}
 /* 私人照片（2026-11-16） */
-.phgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}.phc{margin:0;position:relative;aspect-ratio:1;overflow:hidden;border-radius:10px;background:var(--soft)}.phc img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
-.pht{position:absolute;left:0;right:0;bottom:0;display:flex;gap:4px;align-items:center;padding:4px;background:linear-gradient(to top,#000a,#0000)}.pht select{flex:1;min-width:0;font-size:11px;padding:3px 4px;border-radius:8px;border:0;background:#fffd}.pht .lnk{color:#fff;font-size:14px;padding:2px 6px;background:#0006;border-radius:8px}.pht .lnk.bad{color:#ffb3a7}
+.phgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px}.phc{margin:0;position:relative;aspect-ratio:1;overflow:hidden;border-radius:10px;background:var(--soft)}.phc img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+.pht{position:absolute;left:0;right:0;bottom:0;display:flex;gap:4px;align-items:center;padding:4px;background:linear-gradient(to top,#000a,#0000)}.pht select{flex:1;min-width:0;font-size:11px;padding:3px 2px;border-radius:8px;border:0;background:#fffd}.pht select[data-phday]{flex:0 0 44px}.phn{position:absolute;left:0;right:0;top:0;font-size:11px;line-height:1.3;padding:4px 6px;background:#fff9c4cc;color:#2a221b;max-height:42px;overflow:hidden}.pht .lnk{color:#fff;font-size:14px;padding:2px 6px;background:#0006;border-radius:8px}.pht .lnk.bad{color:#ffb3a7}
 html.wide .phgrid{grid-template-columns:repeat(4,1fr)}
 #phv{position:fixed;inset:0;z-index:50;background:#000d;display:flex;align-items:center;justify-content:center;padding:16px}#phv[hidden]{display:none}#phv img{max-width:100%;max-height:100%;object-fit:contain}#phv .x{position:absolute;top:calc(12px + env(safe-area-inset-top));right:12px;width:44px;height:44px;border-radius:50%;background:#fff3;color:#fff;font-size:24px}
 </style>
@@ -237,6 +237,6 @@ html.wide .phgrid{grid-template-columns:repeat(4,1fr)}
 <div id="app"><div class="hero"><p>載入中…</p></div></div>
 <div class="dim" id="dim" hidden><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script type="module" src="app.js?v=20261116a"></script>
+<script type="module" src="app.js?v=20261116b"></script>
 </body>
 </html>

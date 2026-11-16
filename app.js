@@ -729,8 +729,10 @@ async function loadCards() {
   if (cur && route.page === 'photo') render();
 }
 const phCardName = k => k ? (CARDS && CARDS[k]) || k : '私人相簿（不屬於哪張卡片）';
+const phGroupKey = p => p.card ? 'c:' + p.card : p.day ? 'd:' + p.day : '';
+const phGroupName = k => k.startsWith('c:') ? phCardName(k.slice(2)) : k.startsWith('d:') ? `Day ${k.slice(2)} 隨手拍（沒對到卡片）` : '私人相簿（不屬於哪一天、哪張卡片）';
 const phSize = L => L.reduce((a, p) => a + (p.data ? p.data.length * 3 / 4 : 0), 0);
-let PHSEL = '';   // 上傳時選的卡片
+let PHSEL = '', PHDAY = 0;   // 上傳時選的卡片、哪一天
 function pPhoto() {
   loadCards();
   const own = isOwner(), L = (cur.photos || []).slice().sort((a, b) => (a.card || '').localeCompare(b.card || '') || (a.order || 0) - (b.order || 0) || (a.at || 0) - (b.at || 0));
@@ -743,16 +745,20 @@ function pPhoto() {
       <div style="margin-top:10px"><div class="small">放進哪張卡片</div>
       ${CARDS ? `<select id="phcard" class="inp" style="width:100%;margin-top:4px"><option value="">私人相簿（不屬於哪張卡片）</option>${opts}</select>`
         : `<input id="phcard" class="inp" style="width:100%;margin-top:4px" placeholder="卡片 key（例如 kinrinko），空白＝私人相簿" value="${esc(PHSEL)}">`}</div>
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><div class="small">哪一天（沒對到卡片時用）</div><select id="phday" class="inp" style="width:100%;margin-top:4px"><option value="0">不指定</option>${days(cur.trip).map((d, i) => `<option value="${i + 1}"${PHDAY === i + 1 ? ' selected' : ''}>Day ${i + 1}　${fmtD(d)}（${wd(d)}）</option>`).join('')}</select></div>
+      <div><div class="small">時間（選填，例如 14:30）</div><input id="phtime" class="inp" style="width:100%;margin-top:4px" placeholder="HH:MM" inputmode="numeric"></div></div>
+      <div style="margin-top:10px"><div class="small">備註（會變成照片下面的手寫註記；這批每張都一樣，之後可以逐張改）</div><textarea id="phnote" class="inp" rows="2" style="width:100%;margin-top:4px" placeholder="例如：臨時看到的夕陽、在車上吃的烤飯糰"></textarea></div>
       <label class="btn" style="cursor:pointer">選照片（可多張）<input id="phfile" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden></label>
       <div id="phprog" class="small" style="margin-top:6px"></div></div>`;
   }
   const n = L.length, mb = phSize(L) / 1048576;
   A += `<div class="card small">${n ? `共 ${n} 張・約 ${mb.toFixed(1)} MB（Firestore 免費額度 1 GB）` : '還沒有私人照片。'}${own ? '' : '　只有主辦人能上傳。'}</div>`;
-  const groups = []; L.forEach(p => { const k = p.card || ''; let g = groups.find(x => x.k === k); if (!g) { g = { k, L: [] }; groups.push(g); } g.L.push(p); });
-  let B = groups.map(g => `<div class="card"><div class="bh" style="display:flex;justify-content:space-between"><b>${esc(phCardName(g.k))}</b><i>${g.L.length} 張</i></div>
+  const groups = []; L.forEach(p => { const k = phGroupKey(p); let g = groups.find(x => x.k === k); if (!g) { g = { k, L: [] }; groups.push(g); } g.L.push(p); });
+  let B = groups.map(g => `<div class="card"><div class="bh" style="display:flex;justify-content:space-between"><b>${esc(phGroupName(g.k))}</b><i>${g.L.length} 張</i></div>
     <div class="phgrid">${g.L.map(p => `<figure class="phc"><img src="${p.data}" alt="" loading="lazy" data-act="phview" data-id="${p.id}">
       ${own ? `<div class="pht"><select data-phcard="${p.id}" aria-label="改放到哪張卡片"><option value=""${p.card ? '' : ' selected'}>私人相簿</option>${CARDS ? Object.entries(CARDS).map(([k, nm]) => `<option value="${esc(k)}"${k === p.card ? ' selected' : ''}>${esc(nm)}</option>`).join('') : (p.card ? `<option value="${esc(p.card)}" selected>${esc(p.card)}</option>` : '')}</select>
-      <button class="lnk" data-act="phfirst" data-id="${p.id}" title="設為這張卡片的第一張">↑</button><button class="lnk bad" data-act="phdel" data-id="${p.id}" title="刪除">✕</button></div>` : ''}</figure>`).join('')}</div></div>`).join('');
+      <select data-phday="${p.id}" aria-label="哪一天"><option value="0"${p.day ? '' : ' selected'}>天</option>${days(cur.trip).map((d, i) => `<option value="${i + 1}"${p.day === i + 1 ? ' selected' : ''}>D${i + 1}</option>`).join('')}</select>
+      <button class="lnk" data-act="phnote" data-id="${p.id}" title="改備註">📝</button><button class="lnk" data-act="phfirst" data-id="${p.id}" title="設為第一張">↑</button><button class="lnk bad" data-act="phdel" data-id="${p.id}" title="刪除">✕</button></div>` : ''}${p.note ? `<figcaption class="phn">${esc(p.note)}</figcaption>` : ''}</figure>`).join('')}</div></div>`).join('');
   if (!groups.length && !own) B = '';
   return h + cols(A, B);
 }
@@ -768,13 +774,13 @@ async function phShrink(file) {
   return { data, w, h };
 }
 async function phUpload(files) {
-  const prog = $('#phprog'), card = ($('#phcard') || {}).value || ''; PHSEL = card;
-  const base = (cur.photos || []).filter(p => (p.card || '') === card).reduce((a, p) => Math.max(a, p.order || 0), 0);
+  const prog = $('#phprog'), card = ($('#phcard') || {}).value || '', day = +(($('#phday') || {}).value || 0), t = (($('#phtime') || {}).value || '').trim(), note = (($('#phnote') || {}).value || '').trim(); PHSEL = card; PHDAY = day;
+  const base = (cur.photos || []).filter(p => phGroupKey(p) === phGroupKey({ card, day })).reduce((a, p) => Math.max(a, p.order || 0), 0);
   let n = 0;
   for (const f of files) {
     n++; if (prog) prog.textContent = `處理中 ${n}/${files.length}：${f.name}`;
     try { const { data, w, h } = await phShrink(f);
-      await api.add(cur.id, 'photos', { card, order: base + n, data, w, h, name: f.name, by: me.uid, at: Date.now() }); }
+      await api.add(cur.id, 'photos', { card, day, t, note, order: base + n, data, w, h, name: f.name, by: me.uid, at: Date.now() }); }
     catch (e) { toast(errMsg(e)); console.error(e); }
   }
   if (prog) prog.textContent = `完成，上傳了 ${n} 張`; toast('已上傳');
@@ -809,6 +815,7 @@ function famCard(L, own) {
 document.addEventListener('change', async ev => {
   if (ev.target.id === 'phfile' && cur && isOwner()) { const fs = [...ev.target.files]; ev.target.value = ''; if (fs.length) await phUpload(fs); return; }
   const pc = ev.target.closest('select[data-phcard]'); if (pc && cur && isOwner()) { try { await api.update(cur.id, 'photos', pc.dataset.phcard, { card: pc.value }); toast('已移到' + phCardName(pc.value)); } catch (e) { toast(errMsg(e)); } return; }
+  const pd = ev.target.closest('select[data-phday]'); if (pd && cur && isOwner()) { try { await api.update(cur.id, 'photos', pd.dataset.phday, { day: +pd.value }); toast(+pd.value ? '已改成 Day ' + pd.value : '已取消天數'); } catch (e) { toast(errMsg(e)); } return; }
   const s = ev.target.closest('select[data-fam]'); if (!s || !cur || !isOwner()) return;
   let v = s.value; if (v === '__new') { v = (prompt('家庭名稱（例如：王家）') || '').trim(); if (!v) return render(); }
   const fams = { ...(cur.trip.fams || {}) }; if (v) fams[s.dataset.fam] = v; else delete fams[s.dataset.fam];
@@ -912,6 +919,7 @@ document.addEventListener('click', async ev => {
     if (a === 'newinv') { await api.setInvite(cur.id, { key: rnd(20), expires: Date.now() + 7 * 864e5 }); return drawInvite(); }
     if (a === 'copy') { try { await navigator.clipboard.writeText(el.dataset.u); toast('已複製，貼到 LINE 群組'); } catch (e) { prompt('複製這個連結', el.dataset.u); } return; }
     if (a === 'phview') return phView(el.dataset.id);
+    if (a === 'phnote') { const p = (cur.photos || []).find(x => x.id === el.dataset.id); if (!p) return; const v = prompt('這張照片的備註（會變成照片下面的手寫註記）', p.note || ''); if (v === null) return; await api.update(cur.id, 'photos', p.id, { note: v.trim() }); return toast('已更新備註'); }
     if (a === 'phdel') { if (!confirm('確定刪除這張照片？')) return; await api.remove(cur.id, 'photos', el.dataset.id); return toast('已刪除'); }
     if (a === 'phfirst') { const p = (cur.photos || []).find(x => x.id === el.dataset.id); if (!p) return; const mn = (cur.photos || []).filter(x => (x.card || '') === (p.card || '')).reduce((m, x) => Math.min(m, x.order || 0), 0); await api.update(cur.id, 'photos', p.id, { order: mn - 1 }); return; }
     if (a === 'kick') { if (!confirm('把這位成員移出這趟？（他記過的帳會保留）')) return; await api.remove(cur.id, 'members', el.dataset.u); return; }
