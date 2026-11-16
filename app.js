@@ -21,7 +21,7 @@ catch (e) {   // 連不到 Firebase（沒網路、被擋）：不要停在「載
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const BASE = location.pathname.replace(/[^/]*$/, '');           // /trip-tools/
-const KNOWN = ['IzuAtami-trip', '2025-osaka-kanazawa-miokokoen-nagano-tokyo', 'Osaka_Kyoto_Kobe', 'TaiwanTrip2026'];
+const KNOWN = ['IzuAtami-trip', 'Oita_Fukoka_2026', '2025-osaka-kanazawa-miokokoen-nagano-tokyo', 'Osaka_Kyoto_Kobe', 'TaiwanTrip2026', '2027-taiwan'];
 const COLORS = ['#c67139', '#3f4f8a', '#b4507a', '#3c9a72', '#8a6d1f', '#5e3f7a', '#2b7a8a', '#a33b3b'];
 const MEALS = ['早餐', '午餐', '點心', '晚餐'];
 const ICONS = ['🍽', '🍣', '🍢', '🍜', '☕', '🍓', '🚕', '🚗', '🚆', '🎫', '♨', '🛍', '🏨', '✈', '💴'];
@@ -114,12 +114,12 @@ function closeTrip() { if (cur) (cur.unsub || []).forEach(f => { try { f(); } ca
 function openTrip(id) {
   if (cur && cur.id === id) return;
   closeTrip();
-  cur = { id, trip: null, members: [], expenses: [], settles: [], restos: [], budget: [], unsub: [], err: null, loaded: false };
+  cur = { id, trip: null, members: [], expenses: [], settles: [], restos: [], budget: [], photos: [], unsub: [], err: null, loaded: false };
   const c = cur, fail = e => { if (c !== cur) return; c.err = e; render(); };
   c.unsub.push(api.watchTrip(id, t => { if (c !== cur) return; c.trip = t; c.loaded = true; if (t && me && t.owner === me.uid) migrateVis(c); famFix(c); render(); }, fail));
-  for (const sub of ['members', 'expenses', 'settles', 'restos', 'budget'])
-    c.unsub.push(api.watch(id, sub, rows => { if (c !== cur) return; c[sub] = rows; if (sub === 'budget') c.bErr = null; if (sub === 'expenses' || sub === 'settles' || sub === 'members') famFix(c); render(); },
-      sub === 'budget' ? e => { if (c !== cur) return; c.bErr = e; render(); } : fail,   // 預算讀不到（規則還沒更新）只影響預算頁
+  for (const sub of ['members', 'expenses', 'settles', 'restos', 'budget', 'photos'])
+    c.unsub.push(api.watch(id, sub, rows => { if (c !== cur) return; c[sub] = rows; if (sub === 'budget') c.bErr = null; if (sub === 'photos') c.phErr = null; if (sub === 'expenses' || sub === 'settles' || sub === 'members') famFix(c); render(); },
+      sub === 'budget' ? e => { if (c !== cur) return; c.bErr = e; render(); } : sub === 'photos' ? e => { if (c !== cur) return; c.phErr = e; render(); } : fail,   // 預算／照片讀不到（規則還沒更新）只影響那一頁
       sub === 'expenses' || sub === 'settles' ? ['vis', me.uid, 'array-contains'] : undefined));   // 記帳、轉帳只讀自己在 vis 裡的
 }
 // 分了家庭之後，把自己記的、跟別人分的帳與轉帳補上家人（規則只讓記帳的人改；只會加人，不會把人拿掉）
@@ -158,7 +158,7 @@ const testBar = () => EMBED ? '' : `<div class="test">測試版${MOCK ? '（模�
 function tabs(on) {
   if (EMBED && on === 'resto' || WIDE) return '';
   const T = EMBED ? [['budget', '📋', '花費'], ['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['mem', '👥', '成員']]
-    : [['budget', '📋', '預算'], ['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['resto', '🍽', '餐廳'], ['mem', '👥', '成員']];
+    : [['budget', '📋', '預算'], ['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['resto', '🍽', '餐廳'], ['photo', '🖼', '照片'], ['mem', '👥', '成員']];
   return `<nav class="tabs">${T.map(([k, i, t]) => `<a href="#/t/${encodeURIComponent(cur.id)}/${k}" class="${k === on ? 'on' : ''}"><i>${i}</i>${t}</a>`).join('')}</nav>`;
 }
 function head(title) {
@@ -180,7 +180,7 @@ function render() {
   if (!cur.loaded) return app().innerHTML = testBar() + '<div class="hero"><p>讀取中…</p></div>';
   if (!cur.trip) return app().innerHTML = testBar() + `<div class="hero"><h1 class="cap">找不到這趟</h1><p>可能還沒建立。</p>${EMBED ? '' : '<a class="btn s" href="#/">回我的行程</a>'}</div>`;
   const p = route.page;
-  app().innerHTML = testBar() + ({ budget: pBudget, exp: pExp, settle: pSettle, resto: pResto, mem: pMem }[p] || pExp)() + tabs(p);
+  app().innerHTML = testBar() + ({ budget: pBudget, exp: pExp, settle: pSettle, resto: pResto, photo: pPhoto, mem: pMem }[p] || pExp)() + tabs(p);
   if (route.add && p === 'resto') { route.add = false; history.replaceState(null, '', location.pathname + location.search + '#/t/' + encodeURIComponent(cur.id) + '/resto'); RF = null; openResto(); }
 }
 
@@ -717,6 +717,73 @@ async function saveResto() {
 }
 
 /* 成員 */
+
+/* ───────── 私人照片（2026-11-16）─────────
+   有家人朋友的照片不放公開的行程網站，存在 Firestore trips/{id}/photos（base64 WebP，長邊 1000px，每張 < 700 KB）。
+   成員看得到、只有主辦人能上傳／改卡片／刪除。回憶錄網站登入後讀同一個集合，把照片併進對應的卡片。
+   卡片清單從 /<repo>/cards.json（同網域，{key: 名稱}）讀，讀不到就自己打 key。 */
+let CARDS = null, CARDS_FOR = '';   // {key: 名稱}
+async function loadCards() {
+  if (CARDS_FOR === cur.id) return; CARDS_FOR = cur.id; CARDS = null;
+  try { const r = await fetch('/' + cur.id + '/cards.json', { cache: 'no-cache' }); if (r.ok) CARDS = await r.json(); } catch (e) {}
+  if (cur && route.page === 'photo') render();
+}
+const phCardName = k => k ? (CARDS && CARDS[k]) || k : '私人相簿（不屬於哪張卡片）';
+const phSize = L => L.reduce((a, p) => a + (p.data ? p.data.length * 3 / 4 : 0), 0);
+let PHSEL = '';   // 上傳時選的卡片
+function pPhoto() {
+  loadCards();
+  const own = isOwner(), L = (cur.photos || []).slice().sort((a, b) => (a.card || '').localeCompare(b.card || '') || (a.order || 0) - (b.order || 0) || (a.at || 0) - (b.at || 0));
+  let h = head('照片');
+  if (cur.phErr) return h + `<div class="card small">讀不到照片：${esc(errMsg(cur.phErr))}。<br>主辦人請確認 Firebase 的 firestore.rules 已經加上 photos 並發布。</div>`;
+  let A = '';
+  if (own) {
+    const opts = CARDS ? Object.entries(CARDS).map(([k, n]) => `<option value="${esc(k)}"${k === PHSEL ? ' selected' : ''}>${esc(n)}</option>`).join('') : '';
+    A += `<div class="card"><b>上傳私人照片</b><div class="small" style="margin-top:4px">有家人朋友的照片放這裡，只有這趟的成員登入後看得到。照片會在手機上先縮到長邊 1000px，不會上傳原檔。</div>
+      <div style="margin-top:10px"><div class="small">放進哪張卡片</div>
+      ${CARDS ? `<select id="phcard" class="inp" style="width:100%;margin-top:4px"><option value="">私人相簿（不屬於哪張卡片）</option>${opts}</select>`
+        : `<input id="phcard" class="inp" style="width:100%;margin-top:4px" placeholder="卡片 key（例如 kinrinko），空白＝私人相簿" value="${esc(PHSEL)}">`}</div>
+      <label class="btn" style="cursor:pointer">選照片（可多張）<input id="phfile" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden></label>
+      <div id="phprog" class="small" style="margin-top:6px"></div></div>`;
+  }
+  const n = L.length, mb = phSize(L) / 1048576;
+  A += `<div class="card small">${n ? `共 ${n} 張・約 ${mb.toFixed(1)} MB（Firestore 免費額度 1 GB）` : '還沒有私人照片。'}${own ? '' : '　只有主辦人能上傳。'}</div>`;
+  const groups = []; L.forEach(p => { const k = p.card || ''; let g = groups.find(x => x.k === k); if (!g) { g = { k, L: [] }; groups.push(g); } g.L.push(p); });
+  let B = groups.map(g => `<div class="card"><div class="bh" style="display:flex;justify-content:space-between"><b>${esc(phCardName(g.k))}</b><i>${g.L.length} 張</i></div>
+    <div class="phgrid">${g.L.map(p => `<figure class="phc"><img src="${p.data}" alt="" loading="lazy" data-act="phview" data-id="${p.id}">
+      ${own ? `<div class="pht"><select data-phcard="${p.id}" aria-label="改放到哪張卡片"><option value=""${p.card ? '' : ' selected'}>私人相簿</option>${CARDS ? Object.entries(CARDS).map(([k, nm]) => `<option value="${esc(k)}"${k === p.card ? ' selected' : ''}>${esc(nm)}</option>`).join('') : (p.card ? `<option value="${esc(p.card)}" selected>${esc(p.card)}</option>` : '')}</select>
+      <button class="lnk" data-act="phfirst" data-id="${p.id}" title="設為這張卡片的第一張">↑</button><button class="lnk bad" data-act="phdel" data-id="${p.id}" title="刪除">✕</button></div>` : ''}</figure>`).join('')}</div></div>`).join('');
+  if (!groups.length && !own) B = '';
+  return h + cols(A, B);
+}
+// 縮圖：長邊 1000px、WebP q0.8；超過 700 KB 再降畫質（Firestore 一筆 1 MiB）
+async function phShrink(file) {
+  const bmp = await createImageBitmap(file).catch(() => null);
+  let img = bmp; if (!img) { img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = URL.createObjectURL(file); }); }
+  const w0 = img.width, h0 = img.height, k = Math.min(1, 1000 / Math.max(w0, h0)), w = Math.round(w0 * k), h = Math.round(h0 * k);
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(img, 0, 0, w, h);
+  let q = .8, data = cv.toDataURL('image/webp', q);
+  if (!/^data:image\/webp/.test(data)) data = cv.toDataURL('image/jpeg', q);   // 舊瀏覽器不支援 WebP 輸出
+  while (data.length > 700 * 1024 * 4 / 3 && q > .4) { q -= .1; data = cv.toDataURL(data.slice(5, 15) === 'image/webp' ? 'image/webp' : 'image/jpeg', q); }
+  return { data, w, h };
+}
+async function phUpload(files) {
+  const prog = $('#phprog'), card = ($('#phcard') || {}).value || ''; PHSEL = card;
+  const base = (cur.photos || []).filter(p => (p.card || '') === card).reduce((a, p) => Math.max(a, p.order || 0), 0);
+  let n = 0;
+  for (const f of files) {
+    n++; if (prog) prog.textContent = `處理中 ${n}/${files.length}：${f.name}`;
+    try { const { data, w, h } = await phShrink(f);
+      await api.add(cur.id, 'photos', { card, order: base + n, data, w, h, name: f.name, by: me.uid, at: Date.now() }); }
+    catch (e) { toast(errMsg(e)); console.error(e); }
+  }
+  if (prog) prog.textContent = `完成，上傳了 ${n} 張`; toast('已上傳');
+}
+function phView(id) {
+  const p = (cur.photos || []).find(x => x.id === id); if (!p) return;
+  let v = $('#phv'); if (!v) { v = document.createElement('div'); v.id = 'phv'; v.innerHTML = '<img alt=""><button class="x" aria-label="關閉">×</button>'; document.body.appendChild(v); v.addEventListener('click', () => v.hidden = true); }
+  v.querySelector('img').src = p.data; v.hidden = false;
+}
 function pMem() {
   const L = memberList(), own = isOwner();
   let h = head('成員'), A = `<div class="card">${L.map(m => `<div class="mrow">${ava(m.uid)}<b>${esc(m.name)}${m.uid === me.uid ? '（我）' : ''}</b><span class="r">${m.role === 'owner' ? '主辦人' : '成員'}${own && m.email ? '<br>' + esc(m.email) : ''}</span>${own && m.uid !== me.uid ? `<button class="small" data-act="kick" data-u="${esc(m.uid)}" style="margin-left:6px">移除</button>` : ''}</div>`).join('')}</div>`;
@@ -740,6 +807,8 @@ function famCard(L, own) {
       : H.map(k => `<div class="mrow"><span class="hav">${hhMembers(k).map(u => ava(u, 26)).join('')}</span><b>${esc(hhName(k))}</b><span class="r">${hhMembers(k).map(u => esc(mInfo(u).name)).join('、')}</span></div>`).join('')}</div>`;
 }
 document.addEventListener('change', async ev => {
+  if (ev.target.id === 'phfile' && cur && isOwner()) { const fs = [...ev.target.files]; ev.target.value = ''; if (fs.length) await phUpload(fs); return; }
+  const pc = ev.target.closest('select[data-phcard]'); if (pc && cur && isOwner()) { try { await api.update(cur.id, 'photos', pc.dataset.phcard, { card: pc.value }); toast('已移到' + phCardName(pc.value)); } catch (e) { toast(errMsg(e)); } return; }
   const s = ev.target.closest('select[data-fam]'); if (!s || !cur || !isOwner()) return;
   let v = s.value; if (v === '__new') { v = (prompt('家庭名稱（例如：王家）') || '').trim(); if (!v) return render(); }
   const fams = { ...(cur.trip.fams || {}) }; if (v) fams[s.dataset.fam] = v; else delete fams[s.dataset.fam];
@@ -842,6 +911,9 @@ document.addEventListener('click', async ev => {
     if (a === 'rdel') { if (!confirm('確定刪除？')) return; await api.remove(cur.id, 'restos', el.dataset.id); return; }
     if (a === 'newinv') { await api.setInvite(cur.id, { key: rnd(20), expires: Date.now() + 7 * 864e5 }); return drawInvite(); }
     if (a === 'copy') { try { await navigator.clipboard.writeText(el.dataset.u); toast('已複製，貼到 LINE 群組'); } catch (e) { prompt('複製這個連結', el.dataset.u); } return; }
+    if (a === 'phview') return phView(el.dataset.id);
+    if (a === 'phdel') { if (!confirm('確定刪除這張照片？')) return; await api.remove(cur.id, 'photos', el.dataset.id); return toast('已刪除'); }
+    if (a === 'phfirst') { const p = (cur.photos || []).find(x => x.id === el.dataset.id); if (!p) return; const mn = (cur.photos || []).filter(x => (x.card || '') === (p.card || '')).reduce((m, x) => Math.min(m, x.order || 0), 0); await api.update(cur.id, 'photos', p.id, { order: mn - 1 }); return; }
     if (a === 'kick') { if (!confirm('把這位成員移出這趟？（他記過的帳會保留）')) return; await api.remove(cur.id, 'members', el.dataset.u); return; }
   } catch (e) { toast(errMsg(e)); console.error(e); }
 });

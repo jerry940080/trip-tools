@@ -202,6 +202,18 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
 2. （已完成 2026-10-12）正式名單接到行程網站的餐廳頁。其他行程網站要接的話，照 IzuAtami-trip CLAUDE.md 變更（三十九）做。
 3. 記帳可考慮：照片收據、更多幣別。（依類別統計已由「記帳 ↔ 花費同步」完成。）
 
+## 私人照片（2026-11-16）
+使用者要讓回憶錄網站（Oita_Fukoka_2026，公開）裡有家人朋友的照片只有登入的成員看得到。評估過 Cloudflare Access 與 Firebase Storage（新專案要升 Blaze），
+決定**照片存 Firestore**、沿用這裡的 Google 登入與成員制，不開 Storage、不換主機。
+- **資料** `trips/{id}/photos/{auto}`：`{card(行程網站的卡片 key，空＝私人相簿), order, data(data:image/webp;base64,…，長邊 1000px，< 700 KB), w, h, name(原檔名), by, at}`。
+  一筆 Firestore 文件上限 1 MiB；`phShrink` 在瀏覽器用 canvas 縮圖、WebP q0.8，超過 700 KB 逐步降畫質。原檔不上傳。
+- **規則**：`photos` 成員可讀、只有主辦人可寫（和 `budget` 一樣）。`mock.js` 同步。**使用者要把新的 `firestore.rules` 貼到 Firebase 主控台發布。**
+- **畫面**：獨立開啟多一個「照片」分頁（`pPhoto`，六個分頁；嵌入模式不加）。主辦人：選卡片（下拉清單讀 `/<repo>/cards.json`＝`{key: 名稱}`，讀不到就手打 key）→ 選照片（可多張，`accept` 只收 jpeg/png/webp，iPhone 會自動把 HEIC 轉成 JPEG）→ 逐張縮圖上傳，進度在 `#phprog`。
+  下面依卡片分組的縮圖格（`.phgrid`），主辦人每張可改卡片（`select[data-phcard]`）、設為第一張（`phfirst`：order 設成最小減一）、刪除；點縮圖開大圖 `#phv`。成員只能看。上方顯示張數與約略大小（免費額度 1 GB）。
+- `KNOWN` 加 `Oita_Fukoka_2026`、`2027-taiwan`；`openTrip` 多訂閱 `photos`（讀不到只影響照片頁，`cur.phErr`）。`index.html` 的 `app.js?v=20261116a`，分頁列改六欄。
+- 回憶錄網站那邊：登入後讀同一個集合，把 `card` 對到的照片併進卡片（做法記在 Oita_Fukoka_2026 的 CLAUDE.md）。
+- 驗證：本機把 trip-tools 與 Oita_Fukoka_2026 symlink 到同一個資料夾起 http.server，Playwright `?mock=1&as=哥哥` 建立行程 → 照片頁上傳 2 張（46 KB、193 KB）→ 選金鱗湖再上傳 1 張 → 分組顯示、看大圖；`?as=路人` 進不去。真正的 Firebase 要使用者上線後測。
+
 ## 只有網站主人能建立新的一趟（2026-11-12）
 使用者打算把行程網站分享到旅遊版，資安盤點發現：任何人用 Google 登入後都能建立行程（`trips/{t}` 的 create 只檢查 owner 是自己），
 陌生人可以亂建行程佔掉 Firebase 免費額度，或搶先用使用者其他行程的 repo 名稱（例如 `Oita_Fukoka_2026`）建立，讓使用者之後建不了。

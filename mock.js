@@ -36,7 +36,7 @@ export default {
   async removeUserTrip(uid, tripId) { if (S.users[uid]) delete S.users[uid].trips[tripId]; save(); },
 
   async getTrip(id) { if (!T(id)) return null; if (!isMember(id)) throw deny(); return { id, ...T(id).data }; },
-  async createTrip(id, data) { if (T(id)) throw deny(); S.trips[id] = { data, members: {}, expenses: {}, settles: {}, restos: {}, budget: {}, private: {} }; save(); },
+  async createTrip(id, data) { if (T(id)) throw deny(); S.trips[id] = { data, members: {}, expenses: {}, settles: {}, restos: {}, budget: {}, photos: {}, private: {} }; save(); },
   async updateTrip(id, patch) { if (!isMember(id)) throw deny(); if (!isOwner(id) && Object.keys(patch).some(k => k !== 'rate')) throw deny(); Object.assign(T(id).data, patch); save(); },
   watchTrip(id, cb, err) { const f = () => { if (!T(id)) return cb(null); isMember(id) ? cb({ id, ...T(id).data }) : err && err(deny()); }; subs.add(f); setTimeout(f, 0); return () => subs.delete(f); },
 
@@ -55,7 +55,7 @@ export default {
     subs.add(f); setTimeout(f, 0); return () => subs.delete(f);
   },
   async getAll(id, sub) { if (!isMember(id) || (PRIV(sub) && !OLD)) throw deny(); return JSON.parse(JSON.stringify(Object.entries(T(id)[sub] || {}).map(([k, v]) => ({ id: k, ...v })))); },
-  async add(id, sub, data) { if (!isMember(id) || data.by !== me.uid || (sub === 'restos' && data.status !== 'pending') || (sub === 'budget' && !isOwner(id)) || (PRIV(sub) && !visOk(sub, data))) throw deny(); const k = 'd' + (++seq); (T(id)[sub] = T(id)[sub] || {})[k] = data; save(); return { id: k }; },
+  async add(id, sub, data) { if (!isMember(id) || data.by !== me.uid || (sub === 'restos' && data.status !== 'pending') || ((sub === 'budget' || sub === 'photos') && !isOwner(id)) || (PRIV(sub) && !visOk(sub, data))) throw deny(); const k = 'd' + (++seq); (T(id)[sub] = T(id)[sub] || {})[k] = data; save(); return { id: k }; },
   async set(id, sub, docId, data) {
     if (sub === 'members') {
       const inv = T(id) && T(id).private.invite;
@@ -70,7 +70,7 @@ export default {
   },
   async update(id, sub, docId, patch) {
     if (!isMember(id)) throw deny();
-    if ((sub === 'restos' || sub === 'budget') && !isOwner(id)) throw deny();
+    if ((sub === 'restos' || sub === 'budget' || sub === 'photos') && !isOwner(id)) throw deny();
     if (PRIV(sub)) { const d = T(id)[sub][docId]; if (!d || (d.by !== me.uid && !isOwner(id)) || (!OLD && (!inVis(d) || !visOk(sub, { ...d, ...patch })))) throw deny(); }
     Object.assign(T(id)[sub][docId], patch); save();
   },
@@ -78,7 +78,7 @@ export default {
     if (!isMember(id)) throw deny();
     const d = T(id)[sub][docId] || {};
     if (PRIV(sub) && !OLD && !inVis(d)) throw deny();
-    const ok = (sub === 'settles' && !OLD && inVis(d)) || isOwner(id) || (sub === 'budget' ? false : sub === 'members' ? docId === me.uid : sub === 'restos' ? d.by === me.uid && d.status === 'pending' : d.by === me.uid);
+    const ok = (sub === 'settles' && !OLD && inVis(d)) || isOwner(id) || (sub === 'budget' || sub === 'photos' ? false : sub === 'members' ? docId === me.uid : sub === 'restos' ? d.by === me.uid && d.status === 'pending' : d.by === me.uid);
     if (!ok) throw deny();
     delete T(id)[sub][docId]; save();
   },
