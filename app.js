@@ -960,17 +960,19 @@ api.onAuth(u => { me = u; route = parse(); show(); });
 const LAYOUTS = [
   ['single', '① 單張滿版', '1 張照片，不裁切'], ['main', '② 主圖＋縮圖列', '2–9 張照片，第一張是主圖'], ['pair', '③ 雙拼', '2 張照片並排，直幅最好'],
   ['quad', '④ 四宮格', '4 張照片，裁成正方形'], ['collage', '⑤ 拼貼 1＋2', '3 張：左邊 1 張直幅、右邊 2 張'], ['video', '⑥ 影片主頁', '1 支影片，整張相紙就是影片'],
-  ['photovideo', '⑦ 照片＋影片', '1 張照片當封面＋1–3 支影片'], ['text', '⑧ 文字頁＋小地圖', '沒有照片的站或移動：地圖＋一段文字'],
   // 整頁構圖（2026-11-18）：不是「左相紙右文字」，整個畫面一起排
   ['full', 'Ⓑ 滿版大圖', '1 張照片鋪滿整頁，文字是角落的紙條'], ['scatter', 'Ⓒ 散落拼貼', '3–5 格大小不一、歪斜重疊（照片或影片）'], ['wide', 'Ⓓ 上圖下文', '1 張橫幅或全景照片放到全寬'],
   ['film', 'Ⓔ 底片條', '4–6 格排成一條底片（照片或影片）'], ['bigtext', 'Ⓕ 大字頁', '大標題＋一段話，照片 0–1 張'], ['wall', 'Ⓖ 拍立得牆', '6–9 格小拍立得（照片或影片），各有手寫字'], ['diptych', 'Ⓗ 雙聯夾文字', '左右各 1 格（照片或影片），文字在中間'],
   // 影片＋照片（2026-11-18）
-  ['vmain', 'Ⓘ 影片＋照片縮圖', '1 支影片當主角＋1–6 張照片小縮圖'], ['vstack', 'Ⓙ 影片在上、照片一排', '1 支大影片＋下面 2–4 張小照片'], ['vduo', 'Ⓚ 照片與影片並排', '1 張照片＋1 支影片，一樣大'], ['vtrio', 'Ⓛ 影片並排', '2–3 支影片並排＋0–3 張小照片']];
-const LMIX = { vmain: 1, vstack: 1, vduo: 1, vtrio: 1 };
-const LCANVAS = { full: 1, scatter: 1, wide: 1, film: 1, bigtext: 1, wall: 1, diptych: 1, vstack: 1, vduo: 1, vtrio: 1 };
+  ['vmain', 'Ⓘ 影片＋照片縮圖', '1 支影片當主角＋1–6 張照片小縮圖'], ['vstack', 'Ⓙ 影片在上、照片一排', '1 支大影片＋下面 2–4 張小照片'], ['vtrio', 'Ⓛ 影片並排', '2–3 支影片並排＋0–3 張小照片'],
+  // 一支影片＋一張照片（2026-11-19）
+  ['vpin', 'Ⓜ 影片大、照片貼角落', '1 支影片當主角＋1 張照片斜貼在右下角'], ['ppin', 'Ⓝ 照片大、影片貼角落', '1 張照片當主角＋1 支影片小窗'], ['vfull', 'Ⓞ 影片鋪滿整頁', '1 支影片佔滿畫面＋1 張照片拍立得']];
+const LMIX = { vmain: 1, vstack: 1, vduo: 1, vtrio: 1, vpin: 1, ppin: 1, vfull: 1 };
+const LOLD = { photovideo: '⑦ 照片＋影片', text: '⑧ 文字頁＋小地圖', vduo: 'Ⓚ 照片與影片並排' };   // 2026-11-19 使用者移除：選單不再出現，已經存的頁面照舊顯示、可以改選別的
+const LCANVAS = { full: 1, scatter: 1, wide: 1, film: 1, bigtext: 1, wall: 1, diptych: 1, vstack: 1, vduo: 1, vtrio: 1, vpin: 1, ppin: 1, vfull: 1 };
 const LCAP = { single: [1, 1, 0, 0], main: [2, 9, 0, 0], pair: [2, 2, 0, 0], quad: [4, 4, 0, 0], collage: [3, 3, 0, 0], video: [0, 0, 1, 1], photovideo: [1, 1, 1, 3], text: [0, 0, 0, 0],
   full: [1, 1, 0, 0], scatter: [0, 5, 0, 5, 3, 5], wide: [1, 1, 0, 0], film: [0, 6, 0, 6, 4, 6], bigtext: [0, 1, 0, 0], wall: [0, 9, 0, 9, 6, 9], diptych: [0, 2, 0, 2, 2, 2],
-  vmain: [1, 6, 1, 1], vstack: [2, 4, 1, 1], vduo: [1, 1, 1, 1], vtrio: [0, 3, 2, 3] };   // [照片最少, 照片最多, 影片最少, 影片最多, (合計最少, 合計最多：照片影片可以混)]
+  vmain: [1, 6, 1, 1], vstack: [2, 4, 1, 1], vduo: [1, 1, 1, 1], vtrio: [0, 3, 2, 3], vpin: [1, 1, 1, 1], ppin: [1, 1, 1, 1], vfull: [1, 1, 1, 1] };   // [照片最少, 照片最多, 影片最少, 影片最多, (合計最少, 合計最多：照片影片可以混)]
 const lRng = (a, b) => a === b ? a : a + '–' + b;
 function lNeed(k) { const c = LCAP[k]; if (k === 'text') return '這個版型不放照片（可以放小地圖與文字）'; if (c[4] != null) return '需要 ' + lRng(c[4], c[5]) + ' 格，照片或影片都可以';
   return (c[1] ? '需要照片 ' + lRng(c[0], c[1]) + ' 張' : '不放照片') + (c[3] ? '、影片 ' + lRng(c[2], c[3]) + ' 支' : ''); }
@@ -982,7 +984,7 @@ async function loadMedia() {
   if (cur && route.page === 'layout') render();
 }
 const lPages = day => (cur.pages || []).filter(p => p.day === day).sort((a, b) => (a.order || 0) - (b.order || 0) || (a.at || 0) - (b.at || 0));
-const lName = k => (LAYOUTS.find(x => x[0] === k) || [k, k])[1];
+const lName = k => (LAYOUTS.find(x => x[0] === k) || [k, LOLD[k] ? LOLD[k] + '（已停用）' : k])[1];
 function mItem(id) {   // 媒體編號 → {kind:'photo'|'video', thumb, name, priv}
   const [t, a, b] = id.split(':');
   if (t === 'pub') { const m = MEDIA && MEDIA.photos.find(x => x.id === id); return m ? { kind: 'photo', thumb: '/' + cur.id + '/' + m.src, name: m.name, priv: 0 } : null; }
@@ -1030,7 +1032,7 @@ function drawPage() {
   const lOpt = L => L.map(([k, n, d]) => `<option value="${k}"${k === f.layout ? ' selected' : ''}>${n}　${d}</option>`).join('');
   if (!$('#lForm')) $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">${f.id ? '修改這一頁' : 'Day ' + f.day + '　新增一頁'}</b><button class="small" data-act="close">取消</button></div>
   <div class="lprev" id="lPrev"><div class="lpvbar"><b>預覽</b><span>${[['m', '📱 手機'], ['d', '🖥 電腦'], ['x', '收起']].map(([k, n]) => `<button class="chip${LPV === k ? ' on' : ''}" data-act="l_pv" data-m="${k}">${n}</button>`).join('')}<button class="chip" data-act="l_pvbig" id="lPvBig">⤢ 放大</button></span></div><div class="lpvbox" id="lPvBox"><iframe id="lPvF" src="/${esc(cur.id)}/?embedpreview=1" title="這一頁的預覽" loading="eager"></iframe></div><div class="small" id="lPvTip" style="margin-top:4px">還沒存檔的內容也會顯示；影片在這裡不能播放。</div></div><div id="lForm"></div>`;
-  $('#lForm').innerHTML = `<div class="lab">版型</div><select id="lLayout" class="inp" style="width:100%"><optgroup label="相紙＋文字（左右排）">${lOpt(LAYOUTS.filter(x => !LCANVAS[x[0]] && !LMIX[x[0]]))}</optgroup><optgroup label="整頁構圖">${lOpt(LAYOUTS.filter(x => LCANVAS[x[0]] && !LMIX[x[0]]))}</optgroup><optgroup label="影片＋照片">${lOpt(LAYOUTS.filter(x => LMIX[x[0]]))}</optgroup></select>
+  $('#lForm').innerHTML = `<div class="lab">版型</div><select id="lLayout" class="inp" style="width:100%">${LOLD[f.layout] ? `<option value="${f.layout}" selected>${LOLD[f.layout]}（已停用，建議換一種）</option>` : ''}<optgroup label="相紙＋文字（左右排）">${lOpt(LAYOUTS.filter(x => !LCANVAS[x[0]] && !LMIX[x[0]]))}</optgroup><optgroup label="整頁構圖">${lOpt(LAYOUTS.filter(x => LCANVAS[x[0]] && !LMIX[x[0]]))}</optgroup><optgroup label="影片＋照片">${lOpt(LAYOUTS.filter(x => LMIX[x[0]]))}</optgroup></select>
   ${LCANVAS[f.layout] ? '' : `<label class="small" style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="lFlip"${f.flip ? ' checked' : ''}> Ⓐ 左右對調（電腦版照片在右、文字在左）</label>`}
   <div class="small" style="margin-top:4px;color:${ok ? 'var(--mute)' : '#b4321f'}">${need}${f.layout !== 'text' ? `　目前 ${nPh} 張${nVd ? '＋' + nVd + ' 支' : ''}` : ''}</div>
   ${f.layout === 'text' ? '' : `<div class="lab">照片／影片<span class="small" style="font-weight:500;margin-left:6px">點了依序編號，第 1 張是主圖；再點一次取消</span></div>
@@ -1085,8 +1087,8 @@ async function layoutAct(a, el) {
     closeSheet(); return toast((f.id ? '已儲存' : '已加到 Day ' + f.day) + '，回憶錄網站重新整理就會更新'); }
   if (a === 'l_seed') { if (lPages(LDAY).length) return; const stops = (MEDIA.stops || {})[LDAY] || [], all = lMediaList(); let n = 0;
     for (const s of stops) { if (!s.card) continue; const ph = all.filter(m => m.kind === 'photo' && m.card === s.card).map(m => m.id), vd = all.filter(m => m.kind === 'video' && m.card === s.card).map(m => m.id); if (!ph.length && !vd.length) continue;
-      const layout = !ph.length ? 'video' : vd.length ? 'photovideo' : ph.length === 1 ? 'single' : ph.length === 2 ? 'pair' : ph.length === 3 ? 'collage' : ph.length === 4 ? 'quad' : 'main';
-      const media = layout === 'photovideo' ? [ph[0]].concat(vd.slice(0, 3)) : layout === 'video' ? [vd[0]] : ph.slice(0, 9);
+      const layout = !ph.length ? 'video' : vd.length ? (ph.length === 1 ? 'vpin' : 'vmain') : ph.length === 1 ? 'single' : ph.length === 2 ? 'pair' : ph.length === 3 ? 'collage' : ph.length === 4 ? 'quad' : 'main';
+      const media = layout === 'vpin' ? [vd[0], ph[0]] : layout === 'vmain' ? [vd[0]].concat(ph.slice(0, 6)) : layout === 'video' ? [vd[0]] : ph.slice(0, 9);
       await api.add(cur.id, 'pages', { day: LDAY, order: ++n, layout, media, title: (CARDS && CARDS[s.card]) || s.n, time: s.t, kind: s.k, memo: '', text: '', leg: null, by: me.uid, at: Date.now() }); }
     return toast(n ? '帶入了 ' + n + ' 頁，可以再改' : '這天沒有有照片的站'); }
 }
