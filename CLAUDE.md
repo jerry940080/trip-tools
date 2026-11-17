@@ -215,6 +215,9 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
   每張的覆蓋列多「天」下拉（`select[data-phday]`）與 📝（`phnote`，prompt 改備註）；有備註的縮圖上方黃底顯示。分組改成 `phGroupKey`：有卡片→卡片、沒卡片但有天→「Day N 隨手拍」、都沒有→私人相簿。縮圖格手機改兩欄。`app.js?v=20261116b`。
   回憶錄網站：`note` 變成照片下的手寫註記；`card` 空、`day` 有的變成那一天的「隨手拍」張，有 `t` 就排進當天順序。
 - **2026-11-17 拖曳上傳**：照片頁（主辦人）整個畫面都接 `drop`（`phDrag`：dragenter／dragover／dragleave／drop，`html.phdrag` 時上傳鈕變深色、`#app` 外框虛線）；拖進來的檔案走同一個 `phUpload`，用當時填的卡片／天／時間／備註。只收 jpeg/png/webp；拖曳進來的 HEIC 瀏覽器讀不了，提示先匯出 JPEG（iPhone 用「選照片」會自動轉）。`app.js?v=20261117a`。
+- **2026-11-17 影片連結與複製清單**：影片不存 Firestore（太大），上傳卡下方多一欄「影片」貼 YouTube 連結（設「不公開」）→ `phvidadd` 存成 `{kind:'video', url, card, day, t, note, order, by, at}`（沿用當時填的卡片／天／時間／備註）；
+  縮圖格用 `i.ytimg.com/vi/<id>/hqdefault.jpg`（`ytId()` 解析 youtu.be／watch?v／embed／shorts／live）加 ▶，點了另開 YouTube。連結只在 Firestore，公開網頁原始碼不會有。
+  「📋 複製清單（貼給 Claude 調版面）」（`phlist`）把全部項目依分組排序，複製成文字「類型 | 卡片 | 天 | 時間 | 尺寸或網址 | 備註」（剪貼簿失敗改 prompt）。`app.js?v=20261117b`。回憶錄網站要另外把 `kind:'video'` 的項目畫成「▶ 影片」（待做）。
 - `KNOWN` 加 `Oita_Fukoka_2026`、`2027-taiwan`；`openTrip` 多訂閱 `photos`（讀不到只影響照片頁，`cur.phErr`）。`index.html` 的 `app.js?v=20261116a`，分頁列改六欄。
 - 回憶錄網站那邊：登入後讀同一個集合，把 `card` 對到的照片併進卡片（做法記在 Oita_Fukoka_2026 的 CLAUDE.md）。
 - 驗證：本機把 trip-tools 與 Oita_Fukoka_2026 symlink 到同一個資料夾起 http.server，Playwright `?mock=1&as=哥哥` 建立行程 → 照片頁上傳 2 張（46 KB、193 KB）→ 選金鱗湖再上傳 1 張 → 分組顯示、看大圖；`?as=路人` 進不去。真正的 Firebase 要使用者上線後測。

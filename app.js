@@ -732,6 +732,7 @@ const phCardName = k => k ? (CARDS && CARDS[k]) || k : '私人相簿（不屬於
 const phGroupKey = p => p.card ? 'c:' + p.card : p.day ? 'd:' + p.day : '';
 const phGroupName = k => k.startsWith('c:') ? phCardName(k.slice(2)) : k.startsWith('d:') ? `Day ${k.slice(2)} 隨手拍（沒對到卡片）` : '私人相簿（不屬於哪一天、哪張卡片）';
 const phSize = L => L.reduce((a, p) => a + (p.data ? p.data.length * 3 / 4 : 0), 0);
+const ytId = u => { const m = String(u || '').match(/(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/|\/live\/)([\w-]{11})/); return m ? m[1] : ''; };
 let PHSEL = '', PHDAY = 0;   // 上傳時選的卡片、哪一天
 function pPhoto() {
   loadCards();
@@ -749,13 +750,16 @@ function pPhoto() {
       <div><div class="small">時間（選填，例如 14:30）</div><input id="phtime" class="inp" style="width:100%;margin-top:4px" placeholder="HH:MM" inputmode="numeric"></div></div>
       <div style="margin-top:10px"><div class="small">備註（會變成照片下面的手寫註記；這批每張都一樣，之後可以逐張改）</div><textarea id="phnote" class="inp" rows="2" style="width:100%;margin-top:4px" placeholder="例如：臨時看到的夕陽、在車上吃的烤飯糰"></textarea></div>
       <label class="btn phdrop" id="phdrop" style="cursor:pointer"><b>選照片（可多張）</b><span>或把照片直接拖到這裡</span><input id="phfile" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden></label>
-      <div id="phprog" class="small" style="margin-top:6px"></div></div>`;
+      <div id="phprog" class="small" style="margin-top:6px"></div>
+      <div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:10px"><div class="small">影片：先上傳到 YouTube 設「不公開」，把連結貼這裡（用上面選的卡片／天／時間／備註）。連結只存在這裡，登入的成員才看得到。</div>
+      <div style="display:flex;gap:8px;margin-top:4px"><input id="phvid" class="inp" style="flex:1" placeholder="https://youtu.be/…" inputmode="url"><button class="btn s" style="width:auto;margin:0;padding:10px 14px" data-act="phvidadd">加入影片</button></div></div>
+      <button class="lnk" data-act="phlist" style="margin-top:12px;font-size:12px">📋 複製清單（貼給 Claude 調版面）</button></div>`;
   }
   const n = L.length, mb = phSize(L) / 1048576;
   A += `<div class="card small">${n ? `共 ${n} 張・約 ${mb.toFixed(1)} MB（Firestore 免費額度 1 GB）` : '還沒有私人照片。'}${own ? '' : '　只有主辦人能上傳。'}</div>`;
   const groups = []; L.forEach(p => { const k = phGroupKey(p); let g = groups.find(x => x.k === k); if (!g) { g = { k, L: [] }; groups.push(g); } g.L.push(p); });
   let B = groups.map(g => `<div class="card"><div class="bh" style="display:flex;justify-content:space-between"><b>${esc(phGroupName(g.k))}</b><i>${g.L.length} 張</i></div>
-    <div class="phgrid">${g.L.map(p => `<figure class="phc"><img src="${p.data}" alt="" loading="lazy" data-act="phview" data-id="${p.id}">
+    <div class="phgrid">${g.L.map(p => `<figure class="phc${p.kind === 'video' ? ' vid' : ''}">${p.kind === 'video' ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" class="vth" style="background-image:url('https://i.ytimg.com/vi/${esc(ytId(p.url))}/hqdefault.jpg')"><span>▶</span></a>` : `<img src="${p.data}" alt="" loading="lazy" data-act="phview" data-id="${p.id}">`}
       ${own ? `<div class="pht"><select data-phcard="${p.id}" aria-label="改放到哪張卡片"><option value=""${p.card ? '' : ' selected'}>私人相簿</option>${CARDS ? Object.entries(CARDS).map(([k, nm]) => `<option value="${esc(k)}"${k === p.card ? ' selected' : ''}>${esc(nm)}</option>`).join('') : (p.card ? `<option value="${esc(p.card)}" selected>${esc(p.card)}</option>` : '')}</select>
       <select data-phday="${p.id}" aria-label="哪一天"><option value="0"${p.day ? '' : ' selected'}>天</option>${days(cur.trip).map((d, i) => `<option value="${i + 1}"${p.day === i + 1 ? ' selected' : ''}>D${i + 1}</option>`).join('')}</select>
       <button class="lnk" data-act="phnote" data-id="${p.id}" title="改備註">📝</button><button class="lnk" data-act="phfirst" data-id="${p.id}" title="設為第一張">↑</button><button class="lnk bad" data-act="phdel" data-id="${p.id}" title="刪除">✕</button></div>` : ''}${p.note ? `<figcaption class="phn">${esc(p.note)}</figcaption>` : ''}</figure>`).join('')}</div></div>`).join('');
@@ -930,6 +934,12 @@ document.addEventListener('click', async ev => {
     if (a === 'newinv') { await api.setInvite(cur.id, { key: rnd(20), expires: Date.now() + 7 * 864e5 }); return drawInvite(); }
     if (a === 'copy') { try { await navigator.clipboard.writeText(el.dataset.u); toast('已複製，貼到 LINE 群組'); } catch (e) { prompt('複製這個連結', el.dataset.u); } return; }
     if (a === 'phview') return phView(el.dataset.id);
+    if (a === 'phvidadd') { const url = ($('#phvid').value || '').trim(); if (!ytId(url)) return toast('看起來不是 YouTube 連結'); const card = ($('#phcard') || {}).value || '', day = +(($('#phday') || {}).value || 0), t = (($('#phtime') || {}).value || '').trim(), note = (($('#phnote') || {}).value || '').trim();
+      const base = (cur.photos || []).filter(p => phGroupKey(p) === phGroupKey({ card, day })).reduce((m, p) => Math.max(m, p.order || 0), 0);
+      await api.add(cur.id, 'photos', { kind: 'video', url, card, day, t, note, order: base + 1, by: me.uid, at: Date.now() }); $('#phvid').value = ''; return toast('已加入影片'); }
+    if (a === 'phlist') { const L = (cur.photos || []).slice().sort((x, y) => phGroupKey(x).localeCompare(phGroupKey(y)) || (x.order || 0) - (y.order || 0));
+      const txt = ['Oita_Fukoka_2026 私人照片清單（' + L.length + ' 項）', '格式：類型 | 卡片 | 天 | 時間 | 尺寸 | 備註', ...L.map(p => [p.kind === 'video' ? '影片' : '照片', p.card || '-', p.day || '-', p.t || '-', p.kind === 'video' ? p.url : (p.w + 'x' + p.h), (p.note || '').replace(/\n/g, ' / ')].join(' | '))].join('\n');
+      try { await navigator.clipboard.writeText(txt); toast('已複製 ' + L.length + ' 項，貼到聊天視窗'); } catch (e) { prompt('複製這段', txt); } return; }
     if (a === 'phnote') { const p = (cur.photos || []).find(x => x.id === el.dataset.id); if (!p) return; const v = prompt('這張照片的備註（會變成照片下面的手寫註記）', p.note || ''); if (v === null) return; await api.update(cur.id, 'photos', p.id, { note: v.trim() }); return toast('已更新備註'); }
     if (a === 'phdel') { if (!confirm('確定刪除這張照片？')) return; await api.remove(cur.id, 'photos', el.dataset.id); return toast('已刪除'); }
     if (a === 'phfirst') { const p = (cur.photos || []).find(x => x.id === el.dataset.id); if (!p) return; const mn = (cur.photos || []).filter(x => (x.card || '') === (p.card || '')).reduce((m, x) => Math.min(m, x.order || 0), 0); await api.update(cur.id, 'photos', p.id, { order: mn - 1 }); return; }
