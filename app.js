@@ -933,7 +933,7 @@ document.addEventListener('click', async ev => {
     if (a === 'rdel') { if (!confirm('確定刪除？')) return; await api.remove(cur.id, 'restos', el.dataset.id); return; }
     if (a === 'newinv') { await api.setInvite(cur.id, { key: rnd(20), expires: Date.now() + 7 * 864e5 }); return drawInvite(); }
     if (a === 'copy') { try { await navigator.clipboard.writeText(el.dataset.u); toast('已複製，貼到 LINE 群組'); } catch (e) { prompt('複製這個連結', el.dataset.u); } return; }
-    if (a && a.startsWith('l_')) return layoutAct(a, el);
+    if (a && a.startsWith('l_')) return await layoutAct(a, el);   // 要 await，存檔失敗（例如規則還沒發布）才會被下面的 catch 接到、跳出訊息
     if (a === 'phview') return phView(el.dataset.id);
     if (a === 'phvidadd') { const url = ($('#phvid').value || '').trim(); if (!ytId(url)) return toast('看起來不是 YouTube 連結'); const card = ($('#phcard') || {}).value || '', day = +(($('#phday') || {}).value || 0), t = (($('#phtime') || {}).value || '').trim(), note = (($('#phnote') || {}).value || '').trim();
       const base = (cur.photos || []).filter(p => phGroupKey(p) === phGroupKey({ card, day })).reduce((m, p) => Math.max(m, p.order || 0), 0);
@@ -1033,7 +1033,8 @@ function drawPage() {
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><div class="lab">時間</div><input class="inp" id="lTime" placeholder="08:00" value="${esc(f.time)}" inputmode="numeric"></div><div><div class="lab">類型</div><input class="inp" id="lKind" placeholder="景點／美食／住宿／移動" value="${esc(f.kind)}"></div></div>
   <div class="lab">一句心得<span class="small" style="font-weight:500;margin-left:6px">黃色便利貼</span></div><input class="inp" id="lMemo" placeholder="例如：沒有霧，但很安靜。" value="${esc(f.memo)}">
   <div class="lab">文字<span class="small" style="font-weight:500;margin-left:6px">可以長一點、可以換行；留白就不顯示</span></div><textarea class="inp" id="lText" rows="3">${esc(f.text)}</textarea>
-  <button class="btn" data-act="l_save" ${ok ? '' : 'disabled'} style="margin-top:14px">${f.id ? '儲存' : '加到 Day ' + f.day}</button>`;
+  ${ok ? '' : `<div class="small" id="lWhy" style="margin-top:12px;color:#b4321f">還不能存：${need}${f.layout !== 'text' ? `，目前 ${nPh} 張${nVd ? '＋' + nVd + ' 支影片' : ''}` : ''}。請回上面調整照片，或換一個版型。</div>`}
+  <button class="btn${ok ? '' : ' off'}" data-act="l_save" data-ok="${ok ? 1 : 0}" data-why="${esc(need)}" style="margin-top:14px">${f.id ? '儲存' : '加到 Day ' + f.day}</button>`;
   $('#sheet').oninput = ev => { if (ev.target.dataset && ev.target.dataset.cap !== undefined) { LF.caps[ev.target.dataset.cap] = ev.target.value; return; } LF.title = $('#lTitle').value; LF.time = $('#lTime').value; LF.kind = $('#lKind').value; LF.memo = $('#lMemo').value; LF.text = $('#lText').value; };
   $('#sheet').onchange = ev => { if (ev.target.id === 'lFlip') LF.flip = ev.target.checked; if (ev.target.id === 'lLayout') { LF.layout = ev.target.value; drawPage(); } if (ev.target.id === 'lLeg') { const l = legs[+ev.target.value]; LF.leg = l ? { a: l.a, b: l.b } : null; } };
   $('#dim').hidden = false;
@@ -1051,9 +1052,12 @@ async function layoutAct(a, el) {
   if (a === 'l_filt') { LF.filt = el.dataset.k; return drawPage(); }
   if (a === 'l_pick') { const id = el.dataset.id, at = LF.media.indexOf(id); if (at >= 0) LF.media.splice(at, 1); else LF.media.push(id); return drawPage(); }
   if (a === 'l_save') { const f = LF, base = lPages(f.day).reduce((m, p) => Math.max(m, p.order || 0), 0);
+    if (el.dataset.ok !== '1') { const w = $('#lWhy'); if (w) w.scrollIntoView({ block: 'center', behavior: 'smooth' }); return toast('還不能存：' + el.dataset.why); }
+    if (el.dataset.busy) return; el.dataset.busy = 1; const lbl = el.textContent; el.textContent = '儲存中…';
     const data = { day: f.day, layout: f.layout, media: f.layout === 'text' ? [] : f.media, title: f.title.trim(), time: f.time.trim(), kind: f.kind.trim(), memo: f.memo.trim(), text: f.text.trim(), leg: f.layout === 'text' ? (f.leg || null) : null, flip: !LCANVAS[f.layout] && !!f.flip, caps: f.layout === 'text' ? [] : f.media.map(id => (f.caps[id] || '').trim()), by: me.uid, at: Date.now() };
-    if (f.id) { const old = (cur.pages || []).find(x => x.id === f.id); data.order = old ? old.order : base + 1; await api.set(cur.id, 'pages', f.id, data); } else { data.order = base + 1; await api.add(cur.id, 'pages', data); }
-    closeSheet(); return toast(f.id ? '已儲存' : '已加到 Day ' + f.day); }
+    try { if (f.id) { const old = (cur.pages || []).find(x => x.id === f.id); data.order = old && old.order != null ? old.order : base + 1; await api.set(cur.id, 'pages', f.id, data); } else { data.order = base + 1; await api.add(cur.id, 'pages', data); } }
+    catch (e) { delete el.dataset.busy; el.textContent = lbl; console.error(e); return toast(/permission/i.test((e && (e.code || e.message)) || '') ? '存不進去：Firebase 的規則還沒有 pages，請把 firestore.rules 貼到主控台發布' : '存不進去：' + errMsg(e)); }
+    closeSheet(); return toast((f.id ? '已儲存' : '已加到 Day ' + f.day) + '，回憶錄網站重新整理就會更新'); }
   if (a === 'l_seed') { if (lPages(LDAY).length) return; const stops = (MEDIA.stops || {})[LDAY] || [], all = lMediaList(); let n = 0;
     for (const s of stops) { if (!s.card) continue; const ph = all.filter(m => m.kind === 'photo' && m.card === s.card).map(m => m.id), vd = all.filter(m => m.kind === 'video' && m.card === s.card).map(m => m.id); if (!ph.length && !vd.length) continue;
       const layout = !ph.length ? 'video' : vd.length ? 'photovideo' : ph.length === 1 ? 'single' : ph.length === 2 ? 'pair' : ph.length === 3 ? 'collage' : ph.length === 4 ? 'quad' : 'main';

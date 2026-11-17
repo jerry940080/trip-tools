@@ -234,6 +234,9 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
   「在回憶錄網站預覽 ↗」開 `/<repo>/#/day/N`。`app.js?v=20261117c`。
 - **2026-11-18 版型加到 15 種**（使用者：「這版型太過固定，應該要多一點變化」，看過第二輪樣張後「全部都要，原本的八種也全留」）：`LAYOUTS` 多七種整頁構圖（`LCANVAS`）：`full` Ⓑ 滿版大圖（1）／`scatter` Ⓒ 散落拼貼（3–5）／`wide` Ⓓ 上圖下文（1）／`film` Ⓔ 底片條（4–6）／`bigtext` Ⓕ 大字頁（0–1）／`wall` Ⓖ 拍立得牆（6–9）／`diptych` Ⓗ 雙聯夾文字（2），都只放照片。
   版型下拉分兩組（相紙＋文字／整頁構圖）；原本八種多一個勾選「Ⓐ 左右對調」（`flip`，整頁構圖不顯示）；選了照片後多一段「每張照片的手寫字」（`LF.caps` 以媒體編號為 key，存檔時轉成和 `media` 同順序的陣列 `caps`）。`app.js?v=20261118a`。
+- **2026-11-18 修「按下儲存沒有改變」**：兩個原因。（一）張數不符時儲存鈕是 `disabled`，但 `.btn` 沒有 disabled 的樣式，看起來正常、按了沒反應 → 改成不 disabled（`.btn.off` 變淡、`data-ok`），按了跳訊息「還不能存：需要照片 6–9 張」並捲到按鈕上方的紅字說明 `#lWhy`。
+  （二）點擊分派器 `return layoutAct(a, el)` 沒有 `await`，存檔被規則擋下時錯誤不會進 catch、完全沒訊息 → 改成 `return await`，`l_save` 自己也包 try/catch（permission 顯示「Firebase 的規則還沒有 pages…」），存檔中按鈕顯示「儲存中…」。成功的提示加上「回憶錄網站重新整理就會更新」。`app.js?v=20261118b`。
+  **教訓**：`return 某個 async 函式()` 放在 try 裡接不到錯誤，要 `return await`；按鈕不要用看不出來的 disabled。
 - 回憶錄網站那邊：有排頁的那天就照排的（每頁一張）、沒有的照原本自動產生；公開訪客用 Firestore REST 讀 pages，登入成員用 onSnapshot。做法記在 Oita_Fukoka_2026 的 CLAUDE.md。
 - 驗證：Playwright `?mock=1&as=哥哥` 建立行程 → 排版 Day 3 自動帶入 7 頁（金鱗湖雙拼、Tabimusubi 單張…）→ 新增雙拼（選 2 張才能存）→ ↑ 換順序 → 修改帶出 → 刪除 → 文字頁選「12:01 Tabimusubi → 日田站」；零錯誤。
 
