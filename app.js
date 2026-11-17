@@ -114,12 +114,12 @@ function closeTrip() { if (cur) (cur.unsub || []).forEach(f => { try { f(); } ca
 function openTrip(id) {
   if (cur && cur.id === id) return;
   closeTrip();
-  cur = { id, trip: null, members: [], expenses: [], settles: [], restos: [], budget: [], photos: [], unsub: [], err: null, loaded: false };
+  cur = { id, trip: null, members: [], expenses: [], settles: [], restos: [], budget: [], photos: [], pages: [], unsub: [], err: null, loaded: false };
   const c = cur, fail = e => { if (c !== cur) return; c.err = e; render(); };
   c.unsub.push(api.watchTrip(id, t => { if (c !== cur) return; c.trip = t; c.loaded = true; if (t && me && t.owner === me.uid) migrateVis(c); famFix(c); render(); }, fail));
-  for (const sub of ['members', 'expenses', 'settles', 'restos', 'budget', 'photos'])
-    c.unsub.push(api.watch(id, sub, rows => { if (c !== cur) return; c[sub] = rows; if (sub === 'budget') c.bErr = null; if (sub === 'photos') c.phErr = null; if (sub === 'expenses' || sub === 'settles' || sub === 'members') famFix(c); render(); },
-      sub === 'budget' ? e => { if (c !== cur) return; c.bErr = e; render(); } : sub === 'photos' ? e => { if (c !== cur) return; c.phErr = e; render(); } : fail,   // 預算／照片讀不到（規則還沒更新）只影響那一頁
+  for (const sub of ['members', 'expenses', 'settles', 'restos', 'budget', 'photos', 'pages'])
+    c.unsub.push(api.watch(id, sub, rows => { if (c !== cur) return; c[sub] = rows; if (sub === 'budget') c.bErr = null; if (sub === 'photos') c.phErr = null; if (sub === 'pages') c.pgErr = null; if (sub === 'expenses' || sub === 'settles' || sub === 'members') famFix(c); render(); },
+      sub === 'budget' ? e => { if (c !== cur) return; c.bErr = e; render(); } : sub === 'photos' ? e => { if (c !== cur) return; c.phErr = e; render(); } : sub === 'pages' ? e => { if (c !== cur) return; c.pgErr = e; render(); } : fail,   // 預算／照片讀不到（規則還沒更新）只影響那一頁
       sub === 'expenses' || sub === 'settles' ? ['vis', me.uid, 'array-contains'] : undefined));   // 記帳、轉帳只讀自己在 vis 裡的
 }
 // 分了家庭之後，把自己記的、跟別人分的帳與轉帳補上家人（規則只讓記帳的人改；只會加人，不會把人拿掉）
@@ -158,7 +158,7 @@ const testBar = () => EMBED ? '' : `<div class="test">測試版${MOCK ? '（模�
 function tabs(on) {
   if (EMBED && on === 'resto' || WIDE) return '';
   const T = EMBED ? [['budget', '📋', '花費'], ['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['mem', '👥', '成員']]
-    : [['budget', '📋', '預算'], ['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['resto', '🍽', '餐廳'], ['photo', '🖼', '照片'], ['mem', '👥', '成員']];
+    : [['budget', '📋', '預算'], ['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['resto', '🍽', '餐廳'], ['photo', '🖼', '照片'], ['layout', '📖', '排版'], ['mem', '👥', '成員']];
   return `<nav class="tabs">${T.map(([k, i, t]) => `<a href="#/t/${encodeURIComponent(cur.id)}/${k}" class="${k === on ? 'on' : ''}"><i>${i}</i>${t}</a>`).join('')}</nav>`;
 }
 function head(title) {
@@ -180,7 +180,7 @@ function render() {
   if (!cur.loaded) return app().innerHTML = testBar() + '<div class="hero"><p>讀取中…</p></div>';
   if (!cur.trip) return app().innerHTML = testBar() + `<div class="hero"><h1 class="cap">找不到這趟</h1><p>可能還沒建立。</p>${EMBED ? '' : '<a class="btn s" href="#/">回我的行程</a>'}</div>`;
   const p = route.page;
-  app().innerHTML = testBar() + ({ budget: pBudget, exp: pExp, settle: pSettle, resto: pResto, photo: pPhoto, mem: pMem }[p] || pExp)() + tabs(p);
+  app().innerHTML = testBar() + ({ budget: pBudget, exp: pExp, settle: pSettle, resto: pResto, photo: pPhoto, layout: pLayout, mem: pMem }[p] || pExp)() + tabs(p);
   if (route.add && p === 'resto') { route.add = false; history.replaceState(null, '', location.pathname + location.search + '#/t/' + encodeURIComponent(cur.id) + '/resto'); RF = null; openResto(); }
 }
 
@@ -726,7 +726,7 @@ let CARDS = null, CARDS_FOR = '';   // {key: 名稱}
 async function loadCards() {
   if (CARDS_FOR === cur.id) return; CARDS_FOR = cur.id; CARDS = null;
   try { const r = await fetch('/' + cur.id + '/cards.json', { cache: 'no-cache' }); if (r.ok) CARDS = await r.json(); } catch (e) {}
-  if (cur && route.page === 'photo') render();
+  if (cur && (route.page === 'photo' || route.page === 'layout')) render();
 }
 const phCardName = k => k ? (CARDS && CARDS[k]) || k : '私人相簿（不屬於哪張卡片）';
 const phGroupKey = p => p.card ? 'c:' + p.card : p.day ? 'd:' + p.day : '';
@@ -933,6 +933,7 @@ document.addEventListener('click', async ev => {
     if (a === 'rdel') { if (!confirm('確定刪除？')) return; await api.remove(cur.id, 'restos', el.dataset.id); return; }
     if (a === 'newinv') { await api.setInvite(cur.id, { key: rnd(20), expires: Date.now() + 7 * 864e5 }); return drawInvite(); }
     if (a === 'copy') { try { await navigator.clipboard.writeText(el.dataset.u); toast('已複製，貼到 LINE 群組'); } catch (e) { prompt('複製這個連結', el.dataset.u); } return; }
+    if (a && a.startsWith('l_')) return layoutAct(a, el);
     if (a === 'phview') return phView(el.dataset.id);
     if (a === 'phvidadd') { const url = ($('#phvid').value || '').trim(); if (!ytId(url)) return toast('看起來不是 YouTube 連結'); const card = ($('#phcard') || {}).value || '', day = +(($('#phday') || {}).value || 0), t = (($('#phtime') || {}).value || '').trim(), note = (($('#phnote') || {}).value || '').trim();
       const base = (cur.photos || []).filter(p => phGroupKey(p) === phGroupKey({ card, day })).reduce((m, p) => Math.max(m, p.order || 0), 0);
@@ -950,3 +951,106 @@ document.addEventListener('click', async ev => {
 /* ───────── 啟動 ───────── */
 me = undefined;
 api.onAuth(u => { me = u; route = parse(); show(); });
+
+/* ================= 排版（2026-11-17）：回憶錄網站每一頁由主辦人自己排 =================
+   資料 trips/{id}/pages/{auto}：{day, order, layout, media:['pub:card:i'|'pubvid:card:i'|'priv:<photos 文件 id>'|'vid:<photos 文件 id>'], title, time, kind, memo, text, leg:{a,b}, by, at}
+   layout：single 單張滿版／main 主圖＋縮圖列／pair 雙拼／quad 四宮格／collage 拼貼 1＋2／video 影片主頁／photovideo 照片＋影片／text 文字頁＋小地圖。
+   可選的公開媒體從 /<repo>/media.json 讀（回憶錄 repo 的 tools/make_media.js 產生）；私人的就是這裡的 photos。
+   pages 任何人都讀得到（只有文字與媒體編號），私人照片本身仍要登入；回憶錄網站有排頁的那天就照排的、沒有的照原本自動產生。 */
+const LAYOUTS = [
+  ['single', '① 單張滿版', '1 張照片，不裁切'], ['main', '② 主圖＋縮圖列', '2–9 張照片，第一張是主圖'], ['pair', '③ 雙拼', '2 張照片並排，直幅最好'],
+  ['quad', '④ 四宮格', '4 張照片，裁成正方形'], ['collage', '⑤ 拼貼 1＋2', '3 張：左邊 1 張直幅、右邊 2 張'], ['video', '⑥ 影片主頁', '1 支影片，整張相紙就是影片'],
+  ['photovideo', '⑦ 照片＋影片', '1 張照片當封面＋1–3 支影片'], ['text', '⑧ 文字頁＋小地圖', '沒有照片的站或移動：地圖＋一段文字']];
+const LCAP = { single: [1, 1, 0, 0], main: [2, 9, 0, 0], pair: [2, 2, 0, 0], quad: [4, 4, 0, 0], collage: [3, 3, 0, 0], video: [0, 0, 1, 1], photovideo: [1, 1, 1, 3], text: [0, 0, 0, 0] };   // [照片最少, 照片最多, 影片最少, 影片最多]
+let MEDIA = null, MEDIA_FOR = '', LDAY = 1, LF = null;
+async function loadMedia() {
+  if (!cur || MEDIA_FOR === cur.id) return; MEDIA_FOR = cur.id; MEDIA = null;
+  try { const r = await fetch('/' + cur.id + '/media.json', { cache: 'no-cache' }); if (r.ok) MEDIA = await r.json(); } catch (e) {}
+  if (cur && route.page === 'layout') render();
+}
+const lPages = day => (cur.pages || []).filter(p => p.day === day).sort((a, b) => (a.order || 0) - (b.order || 0) || (a.at || 0) - (b.at || 0));
+const lName = k => (LAYOUTS.find(x => x[0] === k) || [k, k])[1];
+function mItem(id) {   // 媒體編號 → {kind:'photo'|'video', thumb, name, priv}
+  const [t, a, b] = id.split(':');
+  if (t === 'pub') { const m = MEDIA && MEDIA.photos.find(x => x.id === id); return m ? { kind: 'photo', thumb: '/' + cur.id + '/' + m.src, name: m.name, priv: 0 } : null; }
+  if (t === 'pubvid') { const m = MEDIA && MEDIA.videos.find(x => x.id === id); return m ? { kind: 'video', thumb: 'https://i.ytimg.com/vi/' + ytId(m.url) + '/hqdefault.jpg', name: m.name, priv: 0 } : null; }
+  const p = (cur.photos || []).find(x => x.id === a); if (!p) return null;
+  return p.kind === 'video' ? { kind: 'video', thumb: 'https://i.ytimg.com/vi/' + ytId(p.url) + '/hqdefault.jpg', name: p.note || (CARDS && CARDS[p.card]) || '私人影片', priv: 1 }
+    : { kind: 'photo', thumb: p.data, name: p.note || (CARDS && CARDS[p.card]) || '私人照片', priv: 1 };
+}
+function pLayout() {
+  loadCards(); loadMedia();
+  const own = isOwner(), dl = cur.trip ? days(cur.trip) : [];
+  let h = head('排版');
+  if (cur.pgErr) return h + `<div class="card small">讀不到排版：${esc(errMsg(cur.pgErr))}。<br>主辦人請確認 Firebase 的 firestore.rules 已經加上 pages 並發布。</div>`;
+  if (!MEDIA) return h + `<div class="card small">讀取可選的照片清單中（/${esc(cur.id)}/media.json）…</div>`;
+  const L = lPages(LDAY), dinfo = (MEDIA.days || []).find(d => d.n === LDAY) || {};
+  let A = `<div class="card"><div class="small">回憶錄網站每一天的頁面由你自己排：選版型、挑照片或影片、寫一句心得。沒排的那一天會照原本的方式自動產生。</div>
+    <div class="lchips" style="margin-top:8px">${dl.map((d, i) => `<button class="chip${LDAY === i + 1 ? ' on' : ''}" data-act="l_day" data-d="${i + 1}">Day ${i + 1}<small>${fmtD(d)}</small></button>`).join('')}</div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;gap:8px"><b>Day ${LDAY}　${esc(dinfo.title || '')}</b><a class="lnk small" href="/${esc(cur.id)}/#/day/${LDAY}" target="_blank" rel="noopener">在回憶錄網站預覽 ↗</a></div></div>`;
+  let B = `<div class="card">${L.length ? `<ol class="lrows">${L.map((p, i) => { const ph = (p.media || []).filter(x => (mItem(x) || {}).kind === 'photo').length, vd = (p.media || []).length - ph, th = (p.media || []).map(mItem).find(Boolean);
+      return `<li class="lrow"><span class="n">${i + 1}</span><span class="th">${th ? `<img src="${esc(th.thumb)}" alt="" loading="lazy">` : '<i>Aa</i>'}</span><span class="b"><b>${esc(p.title || '（沒有標題）')}</b><small>${esc(lName(p.layout))}・${ph ? ph + ' 張' : ''}${vd ? (ph ? '＋' : '') + vd + ' 支影片' : ''}${!ph && !vd ? '文字' : ''}${p.time ? '・' + esc(p.time) : ''}</small></span>
+      ${own ? `<span class="act"><button class="lnk" data-act="l_up" data-id="${p.id}" title="往上" ${i ? '' : 'disabled'}>↑</button><button class="lnk" data-act="l_down" data-id="${p.id}" title="往下" ${i < L.length - 1 ? '' : 'disabled'}>↓</button><button class="lnk" data-act="l_edit" data-id="${p.id}" title="修改">✎</button><button class="lnk bad" data-act="l_del" data-id="${p.id}" title="刪除">✕</button></span>` : ''}</li>`; }).join('')}</ol>`
+    : `<div class="empty">Day ${LDAY} 還沒有排頁，回憶錄網站會照原本自動產生。${own ? '按「自動帶入」先用有照片的站排一版，再慢慢改。' : ''}</div>`}
+    ${own ? `<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn s" style="width:auto;margin:0;padding:10px 14px" data-act="l_add">＋ 新增一頁</button>${L.length ? '' : `<button class="btn s" style="width:auto;margin:0;padding:10px 14px;background:var(--soft);color:var(--ink)" data-act="l_seed">自動帶入有照片的站</button>`}</div>` : '<div class="small" style="margin-top:8px">只有主辦人能排。</div>'}</div>`;
+  return h + cols(A, B);
+}
+function lMediaList() {   // 可選媒體：公開照片 → 私人照片 → 公開影片 → 私人影片
+  const out = [];
+  (MEDIA.photos || []).forEach(m => out.push({ id: m.id, kind: 'photo', thumb: '/' + cur.id + '/' + m.src, name: m.name, card: m.card, priv: 0 }));
+  (cur.photos || []).filter(p => p.kind !== 'video').sort((a, b) => (a.card || '').localeCompare(b.card || '') || (a.order || 0) - (b.order || 0)).forEach(p => out.push({ id: 'priv:' + p.id, kind: 'photo', thumb: p.data, name: p.note || (CARDS && CARDS[p.card]) || (p.day ? 'Day ' + p.day + ' 隨手拍' : '私人相簿'), card: p.card, day: p.day, priv: 1 }));
+  (MEDIA.videos || []).forEach(m => out.push({ id: m.id, kind: 'video', thumb: 'https://i.ytimg.com/vi/' + ytId(m.url) + '/hqdefault.jpg', name: m.name, card: m.card, priv: 0 }));
+  (cur.photos || []).filter(p => p.kind === 'video').forEach(p => out.push({ id: 'vid:' + p.id, kind: 'video', thumb: 'https://i.ytimg.com/vi/' + ytId(p.url) + '/hqdefault.jpg', name: p.note || (CARDS && CARDS[p.card]) || '私人影片', card: p.card, day: p.day, priv: 1 }));
+  return out;
+}
+function openPage(id) {
+  const p = id ? (cur.pages || []).find(x => x.id === id) : null;
+  LF = p ? { id, day: p.day, layout: p.layout, media: (p.media || []).slice(), title: p.title || '', time: p.time || '', kind: p.kind || '', memo: p.memo || '', text: p.text || '', leg: p.leg || null, filt: 'all' }
+    : { id: null, day: LDAY, layout: 'single', media: [], title: '', time: '', kind: '', memo: '', text: '', leg: null, filt: 'all' };
+  drawPage();
+}
+function drawPage() {
+  const f = LF, cap = LCAP[f.layout], all = lMediaList(), legs = (MEDIA.legs || {})[f.day] || [], stops = (MEDIA.stops || {})[f.day] || [];
+  const list = f.filt === 'all' ? all : f.filt === 'priv' ? all.filter(m => m.priv) : f.filt === 'video' ? all.filter(m => m.kind === 'video') : all.filter(m => m.day === f.day || stops.some(s => s.card && s.card === m.card));
+  const nPh = f.media.filter(x => (mItem(x) || {}).kind === 'photo').length, nVd = f.media.length - nPh;
+  const ok = f.layout === 'text' ? true : nPh >= cap[0] && nPh <= cap[1] && nVd >= cap[2] && nVd <= cap[3];
+  const need = f.layout === 'text' ? '這個版型不放照片（可以放小地圖與文字）' : `需要照片 ${cap[0] === cap[1] ? cap[0] : cap[0] + '–' + cap[1]} 張${cap[3] ? '、影片 ' + (cap[2] === cap[3] ? cap[2] : cap[2] + '–' + cap[3]) + ' 支' : ''}`;
+  $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">${f.id ? '修改這一頁' : 'Day ' + f.day + '　新增一頁'}</b><button class="small" data-act="close">取消</button></div>
+  <div class="lab">版型</div><select id="lLayout" class="inp" style="width:100%">${LAYOUTS.map(([k, n, d]) => `<option value="${k}"${k === f.layout ? ' selected' : ''}>${n}　${d}</option>`).join('')}</select>
+  <div class="small" style="margin-top:4px;color:${ok ? 'var(--mute)' : '#b4321f'}">${need}${f.layout !== 'text' ? `　目前 ${nPh} 張${nVd ? '＋' + nVd + ' 支' : ''}` : ''}</div>
+  ${f.layout === 'text' ? '' : `<div class="lab">照片／影片<span class="small" style="font-weight:500;margin-left:6px">點了依序編號，第 1 張是主圖；再點一次取消</span></div>
+  <div class="lchips">${[['day', 'Day ' + f.day + ' 的'], ['all', '全部'], ['priv', '🔒 私人'], ['video', '▶ 影片']].map(([k, n]) => `<button class="chip${f.filt === k ? ' on' : ''}" data-act="l_filt" data-k="${k}">${n}</button>`).join('')}</div>
+  <div class="lpick">${list.map(m => { const at = f.media.indexOf(m.id); return `<button type="button" class="lp${at >= 0 ? ' on' : ''}${m.kind === 'video' ? ' vid' : ''}" data-act="l_pick" data-id="${esc(m.id)}" title="${esc(m.name)}"><img src="${esc(m.thumb)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${m.kind === 'video' ? '<i>▶</i>' : ''}${m.priv ? '<s>🔒</s>' : ''}${at >= 0 ? `<b>${at + 1}</b>` : ''}<small>${esc(m.name)}</small></button>`; }).join('') || '<div class="small">這個分類沒有東西</div>'}</div>`}
+  ${f.layout === 'text' ? `<div class="lab">小地圖畫哪一段</div><select id="lLeg" class="inp" style="width:100%"><option value="">整天的路線</option>${legs.map((l, i) => `<option value="${i}"${f.leg && f.leg.a === l.a && f.leg.b === l.b ? ' selected' : ''}>${esc(l.label)}</option>`).join('')}</select>` : ''}
+  <div class="lab">標題<span class="small" style="font-weight:500;margin-left:6px">也可以從這天的站挑</span></div><input class="inp" id="lTitle" placeholder="例如：金鱗湖" value="${esc(f.title)}" list="lStops"><datalist id="lStops">${stops.map(s => `<option value="${esc(s.n)}">${esc(s.t)}</option>`).join('')}</datalist>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><div class="lab">時間</div><input class="inp" id="lTime" placeholder="08:00" value="${esc(f.time)}" inputmode="numeric"></div><div><div class="lab">類型</div><input class="inp" id="lKind" placeholder="景點／美食／住宿／移動" value="${esc(f.kind)}"></div></div>
+  <div class="lab">一句心得<span class="small" style="font-weight:500;margin-left:6px">黃色便利貼</span></div><input class="inp" id="lMemo" placeholder="例如：沒有霧，但很安靜。" value="${esc(f.memo)}">
+  <div class="lab">文字<span class="small" style="font-weight:500;margin-left:6px">可以長一點、可以換行；留白就不顯示</span></div><textarea class="inp" id="lText" rows="3">${esc(f.text)}</textarea>
+  <button class="btn" data-act="l_save" ${ok ? '' : 'disabled'} style="margin-top:14px">${f.id ? '儲存' : '加到 Day ' + f.day}</button>`;
+  $('#sheet').oninput = () => { LF.title = $('#lTitle').value; LF.time = $('#lTime').value; LF.kind = $('#lKind').value; LF.memo = $('#lMemo').value; LF.text = $('#lText').value; };
+  $('#sheet').onchange = ev => { if (ev.target.id === 'lLayout') { LF.layout = ev.target.value; drawPage(); } if (ev.target.id === 'lLeg') { const l = legs[+ev.target.value]; LF.leg = l ? { a: l.a, b: l.b } : null; } };
+  $('#dim').hidden = false;
+}
+async function layoutAct(a, el) {
+  if (a === 'l_day') { LDAY = +el.dataset.d; return render(); }
+  if (a === 'l_add') return openPage(null);
+  if (a === 'l_edit') return openPage(el.dataset.id);
+  if (a === 'l_del') { if (!confirm('確定刪掉這一頁？')) return; await api.remove(cur.id, 'pages', el.dataset.id); return toast('已刪除'); }
+  if (a === 'l_up' || a === 'l_down') { const L = lPages(LDAY), i = L.findIndex(p => p.id === el.dataset.id), j = a === 'l_up' ? i - 1 : i + 1; if (i < 0 || j < 0 || j >= L.length) return;
+    // 重新編號整天（避免 order 相同）
+    const seq = L.slice(); [seq[i], seq[j]] = [seq[j], seq[i]];
+    for (let k = 0; k < seq.length; k++) if ((seq[k].order || 0) !== k + 1) await api.update(cur.id, 'pages', seq[k].id, { order: k + 1 });
+    return; }
+  if (a === 'l_filt') { LF.filt = el.dataset.k; return drawPage(); }
+  if (a === 'l_pick') { const id = el.dataset.id, at = LF.media.indexOf(id); if (at >= 0) LF.media.splice(at, 1); else LF.media.push(id); return drawPage(); }
+  if (a === 'l_save') { const f = LF, base = lPages(f.day).reduce((m, p) => Math.max(m, p.order || 0), 0);
+    const data = { day: f.day, layout: f.layout, media: f.layout === 'text' ? [] : f.media, title: f.title.trim(), time: f.time.trim(), kind: f.kind.trim(), memo: f.memo.trim(), text: f.text.trim(), leg: f.layout === 'text' ? (f.leg || null) : null, by: me.uid, at: Date.now() };
+    if (f.id) { const old = (cur.pages || []).find(x => x.id === f.id); data.order = old ? old.order : base + 1; await api.set(cur.id, 'pages', f.id, data); } else { data.order = base + 1; await api.add(cur.id, 'pages', data); }
+    closeSheet(); return toast(f.id ? '已儲存' : '已加到 Day ' + f.day); }
+  if (a === 'l_seed') { if (lPages(LDAY).length) return; const stops = (MEDIA.stops || {})[LDAY] || [], all = lMediaList(); let n = 0;
+    for (const s of stops) { if (!s.card) continue; const ph = all.filter(m => m.kind === 'photo' && m.card === s.card).map(m => m.id), vd = all.filter(m => m.kind === 'video' && m.card === s.card).map(m => m.id); if (!ph.length && !vd.length) continue;
+      const layout = !ph.length ? 'video' : vd.length ? 'photovideo' : ph.length === 1 ? 'single' : ph.length === 2 ? 'pair' : ph.length === 3 ? 'collage' : ph.length === 4 ? 'quad' : 'main';
+      const media = layout === 'photovideo' ? [ph[0]].concat(vd.slice(0, 3)) : layout === 'video' ? [vd[0]] : ph.slice(0, 9);
+      await api.add(cur.id, 'pages', { day: LDAY, order: ++n, layout, media, title: (CARDS && CARDS[s.card]) || s.n, time: s.t, kind: s.k, memo: '', text: '', leg: null, by: me.uid, at: Date.now() }); }
+    return toast(n ? '帶入了 ' + n + ' 頁，可以再改' : '這天沒有有照片的站'); }
+}

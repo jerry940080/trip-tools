@@ -222,6 +222,19 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
 - 回憶錄網站那邊：登入後讀同一個集合，把 `card` 對到的照片併進卡片（做法記在 Oita_Fukoka_2026 的 CLAUDE.md）。
 - 驗證：本機把 trip-tools 與 Oita_Fukoka_2026 symlink 到同一個資料夾起 http.server，Playwright `?mock=1&as=哥哥` 建立行程 → 照片頁上傳 2 張（46 KB、193 KB）→ 選金鱗湖再上傳 1 張 → 分組顯示、看大圖；`?as=路人` 進不去。真正的 Firebase 要使用者上線後測。
 
+## 排版（2026-11-17）：回憶錄網站每一頁由主辦人自己排
+使用者：「制定一個模板，讓我自己可以編輯想要放的圖片跟影片還有旁邊要撰寫的文字以及順序，版型要讓我自己挑」。8 種版型全留、編輯放 trip-tools。
+- **資料** `trips/{id}/pages/{auto}`：`{day, order, layout, media:[編號…], title, time, kind, memo(一句心得), text, leg:{a,b}|null, by, at}`。
+  `layout`：`single` ① 單張滿版（1 張）／`main` ② 主圖＋縮圖列（2–9）／`pair` ③ 雙拼（2）／`quad` ④ 四宮格（4）／`collage` ⑤ 拼貼 1＋2（3）／`video` ⑥ 影片主頁（1 支）／`photovideo` ⑦ 照片＋影片（1 張＋1–3 支）／`text` ⑧ 文字頁＋小地圖（0；`leg` 選那天的哪一段，空＝整天）。`LCAP` 是每種的張數範圍，不符就不能存。
+  媒體編號：`pub:<card>:<i>`（公開照片）、`pubvid:<card>:<i>`（公開影片）、`priv:<photos 文件 id>`、`vid:<photos 文件 id>`（私人）。
+- **規則**：`pages` **任何人都讀得到**（公開的回憶錄網站不登入也要照這個排；內容只有文字與編號，私人照片本身仍要成員登入）、只有主辦人能寫。`mock.js` 同步（非成員 watch pages 放行）。**使用者要把新的 `firestore.rules` 貼到 Firebase 主控台發布。**
+- **可選的公開媒體**從 `/<repo>/media.json` 讀（回憶錄 repo `tools/make_media.js` 產生：`days／cards／photos／videos／legs(每天的移動段)／stops(每天的站)`）；私人的就是 `cur.photos`。
+- **畫面** `pLayout()`（第七個分頁「📖 排版」，分頁列改 7 欄）：六天膠囊 `LDAY` → 那天的頁面列表（縮圖、標題、版型與張數、↑↓ 換順序（整天重新編號 1..n）、✎ 修改、✕ 刪除）→「＋ 新增一頁」；那天還沒排頁時有「自動帶入有照片的站」（`l_seed`：依每站卡片的照片數自動挑版型：1 單張、2 雙拼、3 拼貼、4 四宮格、5+ 主圖；有影片用照片＋影片或影片主頁）。
+  表單 `openPage／drawPage`（`#sheet`）：版型下拉（含說明與目前張數、不符變紅且不能存）→ 媒體挑選 `.lpick`（分類膠囊：Day N 的／全部／🔒 私人／▶ 影片；點了依序編號、再點取消）→ 文字頁改成「小地圖畫哪一段」下拉 → 標題（datalist 列這天的站）、時間、類型、一句心得、文字。動作集中在 `layoutAct('l_…')`。
+  「在回憶錄網站預覽 ↗」開 `/<repo>/#/day/N`。`app.js?v=20261117c`。
+- 回憶錄網站那邊：有排頁的那天就照排的（每頁一張）、沒有的照原本自動產生；公開訪客用 Firestore REST 讀 pages，登入成員用 onSnapshot。做法記在 Oita_Fukoka_2026 的 CLAUDE.md。
+- 驗證：Playwright `?mock=1&as=哥哥` 建立行程 → 排版 Day 3 自動帶入 7 頁（金鱗湖雙拼、Tabimusubi 單張…）→ 新增雙拼（選 2 張才能存）→ ↑ 換順序 → 修改帶出 → 刪除 → 文字頁選「12:01 Tabimusubi → 日田站」；零錯誤。
+
 ## 只有網站主人能建立新的一趟（2026-11-12）
 使用者打算把行程網站分享到旅遊版，資安盤點發現：任何人用 Google 登入後都能建立行程（`trips/{t}` 的 create 只檢查 owner 是自己），
 陌生人可以亂建行程佔掉 Firebase 免費額度，或搶先用使用者其他行程的 repo 名稱（例如 `Oita_Fukoka_2026`）建立，讓使用者之後建不了。

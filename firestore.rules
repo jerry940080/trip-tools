@@ -95,6 +95,13 @@ service cloud.firestore {
         allow write: if isOwner(t);
       }
 
+      // 排版（2026-11-17）：回憶錄網站每一頁的版型、放哪些照片／影片（只存編號）、標題與文字。
+      // 任何人都讀得到（公開網站不登入也要照這個排；私人照片本身仍只有成員讀得到）、只有主辦人能寫
+      match /pages/{p} {
+        allow read: if true;
+        allow write: if isOwner(t);
+      }
+
       // 餐廳：成員推薦（先進待收錄），只有主辦人能收錄／婉拒
       // 已收錄的店不用登入也讀得到：行程網站的「餐廳」頁會列出來（只有店名、日期、推薦人名字、備註）
       match /restos/{r} {
