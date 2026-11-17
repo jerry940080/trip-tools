@@ -241,6 +241,9 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
   `sendPreview()`（180ms 防抖）把 `pageData(LF)`＋用到的私人照片 `priv:{文件 id:{kind,data,url,note}}` 用 `postMessage({type:'kyu-preview',page,priv})` 送過去，由回憶錄網站用真正的版面畫，**還沒存檔也看得到**；iframe 載好會回 `kyu-preview-ready`，再送一次。
   切換：📱 手機（iframe 390×700）／🖥 電腦（1280×720）／收起（`LPV`，記在 localStorage `tt-lpv`）／⤢ 放大（`#lPrev.big` 全螢幕）；`fitPrev()` 用 `transform:scale` 把 iframe 縮進框裡（最高約 42% 螢幕高）。
   為了不讓 iframe 每次重載，`drawPage` 只在第一次建立外殼（標題、`#lPrev`、`#lForm`），之後只重畫 `#lForm`；`openPage` 先清空 `#sheet`。`pageData(f)` 是存檔與預覽共用的欄位整理。`app.js?v=20261118d`。
+- **2026-11-18 影片＋照片的版型（共 19 種）**（使用者：「你好像都沒有提供我影片+圖片的版面，請多設計幾種」）：`LAYOUTS` 多第三組 `LMIX`：`vmain` Ⓘ 影片＋照片縮圖（1 支＋1–6 張）／`vstack` Ⓙ 影片在上、照片一排（1 支＋2–4 張）／`vduo` Ⓚ 照片與影片並排（1＋1）／`vtrio` Ⓛ 影片並排（2–3 支＋0–3 張）；
+  `scatter`／`film`／`wall`／`diptych` 的格子改成照片或影片都可以。`LCAP` 多第 5、6 欄＝合計的最少／最多（有填就代表可以混），檢查與說明文字集中在 `lOk()`／`lNeed()`。
+  版型下拉三組（相紙＋文字／整頁構圖／影片＋照片）；「每張的手寫字」影片也能填。`app.js?v=20261118e`。驗證：IzuAtami… 對話 scratchpad `ed/t.js`（三組 8／7／4、六種版型空的不能存、挑完可存、預覽 iframe 的 `data-canvas` 正確、存檔後列表「1 張＋1 支影片」）。
 - 回憶錄網站那邊：有排頁的那天就照排的（每頁一張）、沒有的照原本自動產生；公開訪客用 Firestore REST 讀 pages，登入成員用 onSnapshot。做法記在 Oita_Fukoka_2026 的 CLAUDE.md。
 - 驗證：Playwright `?mock=1&as=哥哥` 建立行程 → 排版 Day 3 自動帶入 7 頁（金鱗湖雙拼、Tabimusubi 單張…）→ 新增雙拼（選 2 張才能存）→ ↑ 換順序 → 修改帶出 → 刪除 → 文字頁選「12:01 Tabimusubi → 日田站」；零錯誤。
 
