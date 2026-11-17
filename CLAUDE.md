@@ -214,6 +214,7 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
   上傳卡多三欄：哪一天（`day`，0＝不指定；選項依 trip 的 start–end 產生）、時間（`t`，HH:MM 選填）、備註（`note`，整批共用）。
   每張的覆蓋列多「天」下拉（`select[data-phday]`）與 📝（`phnote`，prompt 改備註）；有備註的縮圖上方黃底顯示。分組改成 `phGroupKey`：有卡片→卡片、沒卡片但有天→「Day N 隨手拍」、都沒有→私人相簿。縮圖格手機改兩欄。`app.js?v=20261116b`。
   回憶錄網站：`note` 變成照片下的手寫註記；`card` 空、`day` 有的變成那一天的「隨手拍」張，有 `t` 就排進當天順序。
+- **2026-11-17 拖曳上傳**：照片頁（主辦人）整個畫面都接 `drop`（`phDrag`：dragenter／dragover／dragleave／drop，`html.phdrag` 時上傳鈕變深色、`#app` 外框虛線）；拖進來的檔案走同一個 `phUpload`，用當時填的卡片／天／時間／備註。只收 jpeg/png/webp；拖曳進來的 HEIC 瀏覽器讀不了，提示先匯出 JPEG（iPhone 用「選照片」會自動轉）。`app.js?v=20261117a`。
 - `KNOWN` 加 `Oita_Fukoka_2026`、`2027-taiwan`；`openTrip` 多訂閱 `photos`（讀不到只影響照片頁，`cur.phErr`）。`index.html` 的 `app.js?v=20261116a`，分頁列改六欄。
 - 回憶錄網站那邊：登入後讀同一個集合，把 `card` 對到的照片併進卡片（做法記在 Oita_Fukoka_2026 的 CLAUDE.md）。
 - 驗證：本機把 trip-tools 與 Oita_Fukoka_2026 symlink 到同一個資料夾起 http.server，Playwright `?mock=1&as=哥哥` 建立行程 → 照片頁上傳 2 張（46 KB、193 KB）→ 選金鱗湖再上傳 1 張 → 分組顯示、看大圖；`?as=路人` 進不去。真正的 Firebase 要使用者上線後測。

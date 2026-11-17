@@ -748,7 +748,7 @@ function pPhoto() {
       <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><div class="small">哪一天（沒對到卡片時用）</div><select id="phday" class="inp" style="width:100%;margin-top:4px"><option value="0">不指定</option>${days(cur.trip).map((d, i) => `<option value="${i + 1}"${PHDAY === i + 1 ? ' selected' : ''}>Day ${i + 1}　${fmtD(d)}（${wd(d)}）</option>`).join('')}</select></div>
       <div><div class="small">時間（選填，例如 14:30）</div><input id="phtime" class="inp" style="width:100%;margin-top:4px" placeholder="HH:MM" inputmode="numeric"></div></div>
       <div style="margin-top:10px"><div class="small">備註（會變成照片下面的手寫註記；這批每張都一樣，之後可以逐張改）</div><textarea id="phnote" class="inp" rows="2" style="width:100%;margin-top:4px" placeholder="例如：臨時看到的夕陽、在車上吃的烤飯糰"></textarea></div>
-      <label class="btn" style="cursor:pointer">選照片（可多張）<input id="phfile" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden></label>
+      <label class="btn phdrop" id="phdrop" style="cursor:pointer"><b>選照片（可多張）</b><span>或把照片直接拖到這裡</span><input id="phfile" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden></label>
       <div id="phprog" class="small" style="margin-top:6px"></div></div>`;
   }
   const n = L.length, mb = phSize(L) / 1048576;
@@ -773,17 +773,28 @@ async function phShrink(file) {
   while (data.length > 700 * 1024 * 4 / 3 && q > .4) { q -= .1; data = cv.toDataURL(data.slice(5, 15) === 'image/webp' ? 'image/webp' : 'image/jpeg', q); }
   return { data, w, h };
 }
+(function phDrag() {
+  const isPh = () => cur && route.page === 'photo' && isOwner();
+  let depth = 0;
+  document.addEventListener('dragenter', e => { if (!isPh() || ![...(e.dataTransfer.types || [])].includes('Files')) return; e.preventDefault(); depth++; document.documentElement.classList.add('phdrag'); });
+  document.addEventListener('dragover', e => { if (!isPh()) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+  document.addEventListener('dragleave', e => { if (!isPh()) return; if (--depth <= 0) { depth = 0; document.documentElement.classList.remove('phdrag'); } });
+  document.addEventListener('drop', async e => { if (!isPh()) return; e.preventDefault(); depth = 0; document.documentElement.classList.remove('phdrag');
+    const fs = [...(e.dataTransfer.files || [])].filter(f => /^image\/(jpeg|png|webp|heic|heif)$/i.test(f.type) || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name));
+    if (!fs.length) return toast('只收 JPEG、PNG、WebP 圖片');
+    await phUpload(fs); });
+})();
 async function phUpload(files) {
   const prog = $('#phprog'), card = ($('#phcard') || {}).value || '', day = +(($('#phday') || {}).value || 0), t = (($('#phtime') || {}).value || '').trim(), note = (($('#phnote') || {}).value || '').trim(); PHSEL = card; PHDAY = day;
   const base = (cur.photos || []).filter(p => phGroupKey(p) === phGroupKey({ card, day })).reduce((a, p) => Math.max(a, p.order || 0), 0);
   let n = 0;
   for (const f of files) {
     n++; if (prog) prog.textContent = `處理中 ${n}/${files.length}：${f.name}`;
-    try { const { data, w, h } = await phShrink(f);
+    try { if (/heic|heif/i.test(f.type + f.name)) throw new Error(f.name + '：HEIC 瀏覽器讀不了，請先在相簿匯出成 JPEG 再傳'); const { data, w, h } = await phShrink(f);
       await api.add(cur.id, 'photos', { card, day, t, note, order: base + n, data, w, h, name: f.name, by: me.uid, at: Date.now() }); }
-    catch (e) { toast(errMsg(e)); console.error(e); }
+    catch (e) { toast(/HEIC/.test(e.message) ? e.message : errMsg(e)); console.error(e); n--; }
   }
-  if (prog) prog.textContent = `完成，上傳了 ${n} 張`; toast('已上傳');
+  if (prog) prog.textContent = `完成，上傳了 ${n} 張`; if (n) toast('已上傳 ' + n + ' 張');
 }
 function phView(id) {
   const p = (cur.photos || []).find(x => x.id === id); if (!p) return;
