@@ -960,8 +960,13 @@ api.onAuth(u => { me = u; route = parse(); show(); });
 const LAYOUTS = [
   ['single', '① 單張滿版', '1 張照片，不裁切'], ['main', '② 主圖＋縮圖列', '2–9 張照片，第一張是主圖'], ['pair', '③ 雙拼', '2 張照片並排，直幅最好'],
   ['quad', '④ 四宮格', '4 張照片，裁成正方形'], ['collage', '⑤ 拼貼 1＋2', '3 張：左邊 1 張直幅、右邊 2 張'], ['video', '⑥ 影片主頁', '1 支影片，整張相紙就是影片'],
-  ['photovideo', '⑦ 照片＋影片', '1 張照片當封面＋1–3 支影片'], ['text', '⑧ 文字頁＋小地圖', '沒有照片的站或移動：地圖＋一段文字']];
-const LCAP = { single: [1, 1, 0, 0], main: [2, 9, 0, 0], pair: [2, 2, 0, 0], quad: [4, 4, 0, 0], collage: [3, 3, 0, 0], video: [0, 0, 1, 1], photovideo: [1, 1, 1, 3], text: [0, 0, 0, 0] };   // [照片最少, 照片最多, 影片最少, 影片最多]
+  ['photovideo', '⑦ 照片＋影片', '1 張照片當封面＋1–3 支影片'], ['text', '⑧ 文字頁＋小地圖', '沒有照片的站或移動：地圖＋一段文字'],
+  // 整頁構圖（2026-11-18）：不是「左相紙右文字」，整個畫面一起排
+  ['full', 'Ⓑ 滿版大圖', '1 張照片鋪滿整頁，文字是角落的紙條'], ['scatter', 'Ⓒ 散落拼貼', '3–5 張大小不一、歪斜重疊'], ['wide', 'Ⓓ 上圖下文', '1 張橫幅或全景照片放到全寬'],
+  ['film', 'Ⓔ 底片條', '4–6 張排成一條底片'], ['bigtext', 'Ⓕ 大字頁', '大標題＋一段話，照片 0–1 張'], ['wall', 'Ⓖ 拍立得牆', '6–9 張小拍立得，各有手寫字'], ['diptych', 'Ⓗ 雙聯夾文字', '左右各 1 張直幅，文字在中間']];
+const LCANVAS = { full: 1, scatter: 1, wide: 1, film: 1, bigtext: 1, wall: 1, diptych: 1 };
+const LCAP = { single: [1, 1, 0, 0], main: [2, 9, 0, 0], pair: [2, 2, 0, 0], quad: [4, 4, 0, 0], collage: [3, 3, 0, 0], video: [0, 0, 1, 1], photovideo: [1, 1, 1, 3], text: [0, 0, 0, 0],
+  full: [1, 1, 0, 0], scatter: [3, 5, 0, 0], wide: [1, 1, 0, 0], film: [4, 6, 0, 0], bigtext: [0, 1, 0, 0], wall: [6, 9, 0, 0], diptych: [2, 2, 0, 0] };   // [照片最少, 照片最多, 影片最少, 影片最多]
 let MEDIA = null, MEDIA_FOR = '', LDAY = 1, LF = null;
 async function loadMedia() {
   if (!cur || MEDIA_FOR === cur.id) return; MEDIA_FOR = cur.id; MEDIA = null;
@@ -1005,8 +1010,8 @@ function lMediaList() {   // 可選媒體：公開照片 → 私人照片 → �
 }
 function openPage(id) {
   const p = id ? (cur.pages || []).find(x => x.id === id) : null;
-  LF = p ? { id, day: p.day, layout: p.layout, media: (p.media || []).slice(), title: p.title || '', time: p.time || '', kind: p.kind || '', memo: p.memo || '', text: p.text || '', leg: p.leg || null, filt: 'all' }
-    : { id: null, day: LDAY, layout: 'single', media: [], title: '', time: '', kind: '', memo: '', text: '', leg: null, filt: 'all' };
+  LF = p ? { id, day: p.day, layout: p.layout, media: (p.media || []).slice(), title: p.title || '', time: p.time || '', kind: p.kind || '', memo: p.memo || '', text: p.text || '', leg: p.leg || null, filt: 'all', flip: !!p.flip, caps: Object.fromEntries((p.media || []).map((id, i) => [id, (p.caps || [])[i] || ''])) }
+    : { id: null, day: LDAY, layout: 'single', media: [], title: '', time: '', kind: '', memo: '', text: '', leg: null, filt: 'all', flip: false, caps: {} };
   drawPage();
 }
 function drawPage() {
@@ -1014,21 +1019,23 @@ function drawPage() {
   const list = f.filt === 'all' ? all : f.filt === 'priv' ? all.filter(m => m.priv) : f.filt === 'video' ? all.filter(m => m.kind === 'video') : all.filter(m => m.day === f.day || stops.some(s => s.card && s.card === m.card));
   const nPh = f.media.filter(x => (mItem(x) || {}).kind === 'photo').length, nVd = f.media.length - nPh;
   const ok = f.layout === 'text' ? true : nPh >= cap[0] && nPh <= cap[1] && nVd >= cap[2] && nVd <= cap[3];
-  const need = f.layout === 'text' ? '這個版型不放照片（可以放小地圖與文字）' : `需要照片 ${cap[0] === cap[1] ? cap[0] : cap[0] + '–' + cap[1]} 張${cap[3] ? '、影片 ' + (cap[2] === cap[3] ? cap[2] : cap[2] + '–' + cap[3]) + ' 支' : ''}`;
+  const need = f.layout === 'text' ? '這個版型不放照片（可以放小地圖與文字）' : `${cap[2] && !cap[1] ? '不放照片' : '需要照片 ' + (cap[0] === cap[1] ? cap[0] : cap[0] + '–' + cap[1]) + ' 張'}${cap[3] ? '、影片 ' + (cap[2] === cap[3] ? cap[2] : cap[2] + '–' + cap[3]) + ' 支' : ''}`;
   $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">${f.id ? '修改這一頁' : 'Day ' + f.day + '　新增一頁'}</b><button class="small" data-act="close">取消</button></div>
-  <div class="lab">版型</div><select id="lLayout" class="inp" style="width:100%">${LAYOUTS.map(([k, n, d]) => `<option value="${k}"${k === f.layout ? ' selected' : ''}>${n}　${d}</option>`).join('')}</select>
+  <div class="lab">版型</div><select id="lLayout" class="inp" style="width:100%"><optgroup label="相紙＋文字（左右排）">${LAYOUTS.filter(x => !LCANVAS[x[0]]).map(([k, n, d]) => `<option value="${k}"${k === f.layout ? ' selected' : ''}>${n}　${d}</option>`).join('')}</optgroup><optgroup label="整頁構圖">${LAYOUTS.filter(x => LCANVAS[x[0]]).map(([k, n, d]) => `<option value="${k}"${k === f.layout ? ' selected' : ''}>${n}　${d}</option>`).join('')}</optgroup></select>
+  ${LCANVAS[f.layout] ? '' : `<label class="small" style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="lFlip"${f.flip ? ' checked' : ''}> Ⓐ 左右對調（電腦版照片在右、文字在左）</label>`}
   <div class="small" style="margin-top:4px;color:${ok ? 'var(--mute)' : '#b4321f'}">${need}${f.layout !== 'text' ? `　目前 ${nPh} 張${nVd ? '＋' + nVd + ' 支' : ''}` : ''}</div>
   ${f.layout === 'text' ? '' : `<div class="lab">照片／影片<span class="small" style="font-weight:500;margin-left:6px">點了依序編號，第 1 張是主圖；再點一次取消</span></div>
   <div class="lchips">${[['day', 'Day ' + f.day + ' 的'], ['all', '全部'], ['priv', '🔒 私人'], ['video', '▶ 影片']].map(([k, n]) => `<button class="chip${f.filt === k ? ' on' : ''}" data-act="l_filt" data-k="${k}">${n}</button>`).join('')}</div>
   <div class="lpick">${list.map(m => { const at = f.media.indexOf(m.id); return `<button type="button" class="lp${at >= 0 ? ' on' : ''}${m.kind === 'video' ? ' vid' : ''}" data-act="l_pick" data-id="${esc(m.id)}" title="${esc(m.name)}"><img src="${esc(m.thumb)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${m.kind === 'video' ? '<i>▶</i>' : ''}${m.priv ? '<s>🔒</s>' : ''}${at >= 0 ? `<b>${at + 1}</b>` : ''}<small>${esc(m.name)}</small></button>`; }).join('') || '<div class="small">這個分類沒有東西</div>'}</div>`}
+  ${f.layout !== 'text' && f.media.some(x => (mItem(x) || {}).kind === 'photo') ? `<div class="lab">每張照片的手寫字<span class="small" style="font-weight:500;margin-left:6px">選填；留白就用標題或私人照片的備註</span></div><div class="lcaps">${f.media.map((id, i) => { const m = mItem(id); return m && m.kind === 'photo' ? `<div class="lcap"><span>${i + 1}</span><img src="${esc(m.thumb)}" alt=""><input class="inp" data-cap="${esc(id)}" placeholder="例如：湖上的鳥居" value="${esc(f.caps[id] || '')}"></div>` : ''; }).join('')}</div>` : ''}
   ${f.layout === 'text' ? `<div class="lab">小地圖畫哪一段</div><select id="lLeg" class="inp" style="width:100%"><option value="">整天的路線</option>${legs.map((l, i) => `<option value="${i}"${f.leg && f.leg.a === l.a && f.leg.b === l.b ? ' selected' : ''}>${esc(l.label)}</option>`).join('')}</select>` : ''}
   <div class="lab">標題<span class="small" style="font-weight:500;margin-left:6px">也可以從這天的站挑</span></div><input class="inp" id="lTitle" placeholder="例如：金鱗湖" value="${esc(f.title)}" list="lStops"><datalist id="lStops">${stops.map(s => `<option value="${esc(s.n)}">${esc(s.t)}</option>`).join('')}</datalist>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><div class="lab">時間</div><input class="inp" id="lTime" placeholder="08:00" value="${esc(f.time)}" inputmode="numeric"></div><div><div class="lab">類型</div><input class="inp" id="lKind" placeholder="景點／美食／住宿／移動" value="${esc(f.kind)}"></div></div>
   <div class="lab">一句心得<span class="small" style="font-weight:500;margin-left:6px">黃色便利貼</span></div><input class="inp" id="lMemo" placeholder="例如：沒有霧，但很安靜。" value="${esc(f.memo)}">
   <div class="lab">文字<span class="small" style="font-weight:500;margin-left:6px">可以長一點、可以換行；留白就不顯示</span></div><textarea class="inp" id="lText" rows="3">${esc(f.text)}</textarea>
   <button class="btn" data-act="l_save" ${ok ? '' : 'disabled'} style="margin-top:14px">${f.id ? '儲存' : '加到 Day ' + f.day}</button>`;
-  $('#sheet').oninput = () => { LF.title = $('#lTitle').value; LF.time = $('#lTime').value; LF.kind = $('#lKind').value; LF.memo = $('#lMemo').value; LF.text = $('#lText').value; };
-  $('#sheet').onchange = ev => { if (ev.target.id === 'lLayout') { LF.layout = ev.target.value; drawPage(); } if (ev.target.id === 'lLeg') { const l = legs[+ev.target.value]; LF.leg = l ? { a: l.a, b: l.b } : null; } };
+  $('#sheet').oninput = ev => { if (ev.target.dataset && ev.target.dataset.cap !== undefined) { LF.caps[ev.target.dataset.cap] = ev.target.value; return; } LF.title = $('#lTitle').value; LF.time = $('#lTime').value; LF.kind = $('#lKind').value; LF.memo = $('#lMemo').value; LF.text = $('#lText').value; };
+  $('#sheet').onchange = ev => { if (ev.target.id === 'lFlip') LF.flip = ev.target.checked; if (ev.target.id === 'lLayout') { LF.layout = ev.target.value; drawPage(); } if (ev.target.id === 'lLeg') { const l = legs[+ev.target.value]; LF.leg = l ? { a: l.a, b: l.b } : null; } };
   $('#dim').hidden = false;
 }
 async function layoutAct(a, el) {
@@ -1044,7 +1051,7 @@ async function layoutAct(a, el) {
   if (a === 'l_filt') { LF.filt = el.dataset.k; return drawPage(); }
   if (a === 'l_pick') { const id = el.dataset.id, at = LF.media.indexOf(id); if (at >= 0) LF.media.splice(at, 1); else LF.media.push(id); return drawPage(); }
   if (a === 'l_save') { const f = LF, base = lPages(f.day).reduce((m, p) => Math.max(m, p.order || 0), 0);
-    const data = { day: f.day, layout: f.layout, media: f.layout === 'text' ? [] : f.media, title: f.title.trim(), time: f.time.trim(), kind: f.kind.trim(), memo: f.memo.trim(), text: f.text.trim(), leg: f.layout === 'text' ? (f.leg || null) : null, by: me.uid, at: Date.now() };
+    const data = { day: f.day, layout: f.layout, media: f.layout === 'text' ? [] : f.media, title: f.title.trim(), time: f.time.trim(), kind: f.kind.trim(), memo: f.memo.trim(), text: f.text.trim(), leg: f.layout === 'text' ? (f.leg || null) : null, flip: !LCANVAS[f.layout] && !!f.flip, caps: f.layout === 'text' ? [] : f.media.map(id => (f.caps[id] || '').trim()), by: me.uid, at: Date.now() };
     if (f.id) { const old = (cur.pages || []).find(x => x.id === f.id); data.order = old ? old.order : base + 1; await api.set(cur.id, 'pages', f.id, data); } else { data.order = base + 1; await api.add(cur.id, 'pages', data); }
     closeSheet(); return toast(f.id ? '已儲存' : '已加到 Day ' + f.day); }
   if (a === 'l_seed') { if (lPages(LDAY).length) return; const stops = (MEDIA.stops || {})[LDAY] || [], all = lMediaList(); let n = 0;
