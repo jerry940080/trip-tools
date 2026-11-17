@@ -1067,6 +1067,7 @@ function drawPage() {
   <div class="lab">文字<span class="small" style="font-weight:500;margin-left:6px">可以長一點、可以換行；留白就不顯示</span></div><textarea class="inp" id="lText" rows="3">${esc(f.text)}</textarea>
   ${ok ? '' : `<div class="small" id="lWhy" style="margin-top:12px;color:#b4321f">還不能存：${need}${f.layout !== 'text' ? `，目前 ${nPh} 張${nVd ? '＋' + nVd + ' 支影片' : ''}` : ''}。請回上面調整照片，或換一個版型。</div>`}
   <button class="btn${ok ? '' : ' off'}" data-act="l_save" data-ok="${ok ? 1 : 0}" data-why="${esc(need)}" style="margin-top:14px">${f.id ? '儲存' : '加到 Day ' + f.day}</button>`;
+  $('#dim').hidden = false;   // 先顯示表單再算預覽大小：表單還藏著的時候寬度是 0，預覽框會縮成 0 高（修改既有頁面時一打開看不到預覽）
   fitPrev(); sendPreview();
   $('#sheet').oninput = ev => { sendPreview(); if (ev.target.dataset && ev.target.dataset.cap !== undefined) { LF.caps[ev.target.dataset.cap] = ev.target.value; return; } LF.title = $('#lTitle').value; LF.time = $('#lTime').value; LF.kind = $('#lKind').value; LF.memo = $('#lMemo').value; LF.text = $('#lText').value; };
   $('#sheet').onchange = ev => { sendPreview(); if (ev.target.id === 'lFlip') LF.flip = ev.target.checked; if (ev.target.id === 'lLayout') { LF.layout = ev.target.value; drawPage(); } if (ev.target.id === 'lLeg') { const l = legs[+ev.target.value]; LF.leg = l ? { a: l.a, b: l.b } : null; } };

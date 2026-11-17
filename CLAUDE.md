@@ -256,6 +256,8 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
   直式的判斷是網址含 `/shorts/`；長寬比只有私人照片有（`photos` 文件的 `w／h`，`lMediaList` 多帶 `ar／tall／note／order`），公開照片當成一般橫幅。
   另外把**當天沒對到站的隨手拍**（`card` 空、`day` 是這天）依備註分組，各帶成一頁（類型「隨手拍」，排在站的後面）；前幾天的行程裡已經出現過的站（例如前一晚的住宿）不重複帶。`app.js?v=20261119c`。
   驗證：scratchpad `r10/ed.js` 照使用者實際上傳的 45 項做假資料，六天各按一次自動帶入：新鶴田 → Ⓢ、Kawakami → Ⓤ、金鱗湖 → Ⓛ、本館 9 張／水壩 6 張 → Ⓢ、新館 → Ⓥ、鳥田 → Ⓣ、三支隨手拍直式影片 → Ⓟ；四種新版型空的不能存、挑完可存、預覽正確。
+- **2026-11-19 修：按「修改」打開既有頁面時預覽是空的**（做 ChatGPT 評估包截圖時發現）：`drawPage` 原本先 `fitPrev()` 才把 `#dim` 顯示出來，表單還藏著時 `#lPvBox.clientWidth` 是 0，縮放比例算成 0、預覽框高度 0；要等使用者動到任何欄位重畫才會出現。改成先 `$('#dim').hidden = false` 再算。`app.js?v=20261119d`。
+  **教訓**：量尺寸（`clientWidth`）之前要先確定元素已經顯示。評估包在 scratchpad `review2/`（`review2-for-chatgpt.zip`，截圖腳本 `review2-build/shoot.js`）。
 - 回憶錄網站那邊：有排頁的那天就照排的（每頁一張）、沒有的照原本自動產生；公開訪客用 Firestore REST 讀 pages，登入成員用 onSnapshot。做法記在 Oita_Fukoka_2026 的 CLAUDE.md。
 - 驗證：Playwright `?mock=1&as=哥哥` 建立行程 → 排版 Day 3 自動帶入 7 頁（金鱗湖雙拼、Tabimusubi 單張…）→ 新增雙拼（選 2 張才能存）→ ↑ 換順序 → 修改帶出 → 刪除 → 文字頁選「12:01 Tabimusubi → 日田站」；零錯誤。
 
