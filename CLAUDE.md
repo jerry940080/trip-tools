@@ -237,6 +237,10 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
 - **2026-11-18 修「按下儲存沒有改變」**：兩個原因。（一）張數不符時儲存鈕是 `disabled`，但 `.btn` 沒有 disabled 的樣式，看起來正常、按了沒反應 → 改成不 disabled（`.btn.off` 變淡、`data-ok`），按了跳訊息「還不能存：需要照片 6–9 張」並捲到按鈕上方的紅字說明 `#lWhy`。
   （二）點擊分派器 `return layoutAct(a, el)` 沒有 `await`，存檔被規則擋下時錯誤不會進 catch、完全沒訊息 → 改成 `return await`，`l_save` 自己也包 try/catch（permission 顯示「Firebase 的規則還沒有 pages…」），存檔中按鈕顯示「儲存中…」。成功的提示加上「回憶錄網站重新整理就會更新」。`app.js?v=20261118b`。
   **教訓**：`return 某個 async 函式()` 放在 try 裡接不到錯誤，要 `return await`；按鈕不要用看不出來的 disabled。
+- **2026-11-18 編輯時即時預覽**（使用者：「在修改編輯的時候要可以預覽」）：表單最上面固定一塊 `#lPrev`（sticky），裡面是 iframe `#lPvF`＝`/<repo>/?embedpreview=1`（回憶錄網站的預覽模式）。
+  `sendPreview()`（180ms 防抖）把 `pageData(LF)`＋用到的私人照片 `priv:{文件 id:{kind,data,url,note}}` 用 `postMessage({type:'kyu-preview',page,priv})` 送過去，由回憶錄網站用真正的版面畫，**還沒存檔也看得到**；iframe 載好會回 `kyu-preview-ready`，再送一次。
+  切換：📱 手機（iframe 390×700）／🖥 電腦（1280×720）／收起（`LPV`，記在 localStorage `tt-lpv`）／⤢ 放大（`#lPrev.big` 全螢幕）；`fitPrev()` 用 `transform:scale` 把 iframe 縮進框裡（最高約 42% 螢幕高）。
+  為了不讓 iframe 每次重載，`drawPage` 只在第一次建立外殼（標題、`#lPrev`、`#lForm`），之後只重畫 `#lForm`；`openPage` 先清空 `#sheet`。`pageData(f)` 是存檔與預覽共用的欄位整理。`app.js?v=20261118d`。
 - 回憶錄網站那邊：有排頁的那天就照排的（每頁一張）、沒有的照原本自動產生；公開訪客用 Firestore REST 讀 pages，登入成員用 onSnapshot。做法記在 Oita_Fukoka_2026 的 CLAUDE.md。
 - 驗證：Playwright `?mock=1&as=哥哥` 建立行程 → 排版 Day 3 自動帶入 7 頁（金鱗湖雙拼、Tabimusubi 單張…）→ 新增雙拼（選 2 張才能存）→ ↑ 換順序 → 修改帶出 → 刪除 → 文字頁選「12:01 Tabimusubi → 日田站」；零錯誤。
 

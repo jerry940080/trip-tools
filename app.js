@@ -1012,7 +1012,7 @@ function openPage(id) {
   const p = id ? (cur.pages || []).find(x => x.id === id) : null;
   LF = p ? { id, day: p.day, layout: p.layout, media: (p.media || []).slice(), title: p.title || '', time: p.time || '', kind: p.kind || '', memo: p.memo || '', text: p.text || '', leg: p.leg || null, filt: 'all', flip: !!p.flip, caps: Object.fromEntries((p.media || []).map((id, i) => [id, (p.caps || [])[i] || ''])) }
     : { id: null, day: LDAY, layout: 'single', media: [], title: '', time: '', kind: '', memo: '', text: '', leg: null, filt: 'all', flip: false, caps: {} };
-  drawPage();
+  $('#sheet').innerHTML = ''; drawPage();
 }
 function drawPage() {
   const f = LF, cap = LCAP[f.layout], all = lMediaList(), legs = (MEDIA.legs || {})[f.day] || [], stops = (MEDIA.stops || {})[f.day] || [];
@@ -1020,8 +1020,9 @@ function drawPage() {
   const nPh = f.media.filter(x => (mItem(x) || {}).kind === 'photo').length, nVd = f.media.length - nPh;
   const ok = f.layout === 'text' ? true : nPh >= cap[0] && nPh <= cap[1] && nVd >= cap[2] && nVd <= cap[3];
   const need = f.layout === 'text' ? '這個版型不放照片（可以放小地圖與文字）' : `${cap[2] && !cap[1] ? '不放照片' : '需要照片 ' + (cap[0] === cap[1] ? cap[0] : cap[0] + '–' + cap[1]) + ' 張'}${cap[3] ? '、影片 ' + (cap[2] === cap[3] ? cap[2] : cap[2] + '–' + cap[3]) + ' 支' : ''}`;
-  $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">${f.id ? '修改這一頁' : 'Day ' + f.day + '　新增一頁'}</b><button class="small" data-act="close">取消</button></div>
-  <div class="lab">版型</div><select id="lLayout" class="inp" style="width:100%"><optgroup label="相紙＋文字（左右排）">${LAYOUTS.filter(x => !LCANVAS[x[0]]).map(([k, n, d]) => `<option value="${k}"${k === f.layout ? ' selected' : ''}>${n}　${d}</option>`).join('')}</optgroup><optgroup label="整頁構圖">${LAYOUTS.filter(x => LCANVAS[x[0]]).map(([k, n, d]) => `<option value="${k}"${k === f.layout ? ' selected' : ''}>${n}　${d}</option>`).join('')}</optgroup></select>
+  if (!$('#lForm')) $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">${f.id ? '修改這一頁' : 'Day ' + f.day + '　新增一頁'}</b><button class="small" data-act="close">取消</button></div>
+  <div class="lprev" id="lPrev"><div class="lpvbar"><b>預覽</b><span>${[['m', '📱 手機'], ['d', '🖥 電腦'], ['x', '收起']].map(([k, n]) => `<button class="chip${LPV === k ? ' on' : ''}" data-act="l_pv" data-m="${k}">${n}</button>`).join('')}<button class="chip" data-act="l_pvbig" id="lPvBig">⤢ 放大</button></span></div><div class="lpvbox" id="lPvBox"><iframe id="lPvF" src="/${esc(cur.id)}/?embedpreview=1" title="這一頁的預覽" loading="eager"></iframe></div><div class="small" id="lPvTip" style="margin-top:4px">還沒存檔的內容也會顯示；影片在這裡不能播放。</div></div><div id="lForm"></div>`;
+  $('#lForm').innerHTML = `<div class="lab">版型</div><select id="lLayout" class="inp" style="width:100%"><optgroup label="相紙＋文字（左右排）">${LAYOUTS.filter(x => !LCANVAS[x[0]]).map(([k, n, d]) => `<option value="${k}"${k === f.layout ? ' selected' : ''}>${n}　${d}</option>`).join('')}</optgroup><optgroup label="整頁構圖">${LAYOUTS.filter(x => LCANVAS[x[0]]).map(([k, n, d]) => `<option value="${k}"${k === f.layout ? ' selected' : ''}>${n}　${d}</option>`).join('')}</optgroup></select>
   ${LCANVAS[f.layout] ? '' : `<label class="small" style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="lFlip"${f.flip ? ' checked' : ''}> Ⓐ 左右對調（電腦版照片在右、文字在左）</label>`}
   <div class="small" style="margin-top:4px;color:${ok ? 'var(--mute)' : '#b4321f'}">${need}${f.layout !== 'text' ? `　目前 ${nPh} 張${nVd ? '＋' + nVd + ' 支' : ''}` : ''}</div>
   ${f.layout === 'text' ? '' : `<div class="lab">照片／影片<span class="small" style="font-weight:500;margin-left:6px">點了依序編號，第 1 張是主圖；再點一次取消</span></div>
@@ -1035,11 +1036,27 @@ function drawPage() {
   <div class="lab">文字<span class="small" style="font-weight:500;margin-left:6px">可以長一點、可以換行；留白就不顯示</span></div><textarea class="inp" id="lText" rows="3">${esc(f.text)}</textarea>
   ${ok ? '' : `<div class="small" id="lWhy" style="margin-top:12px;color:#b4321f">還不能存：${need}${f.layout !== 'text' ? `，目前 ${nPh} 張${nVd ? '＋' + nVd + ' 支影片' : ''}` : ''}。請回上面調整照片，或換一個版型。</div>`}
   <button class="btn${ok ? '' : ' off'}" data-act="l_save" data-ok="${ok ? 1 : 0}" data-why="${esc(need)}" style="margin-top:14px">${f.id ? '儲存' : '加到 Day ' + f.day}</button>`;
-  $('#sheet').oninput = ev => { if (ev.target.dataset && ev.target.dataset.cap !== undefined) { LF.caps[ev.target.dataset.cap] = ev.target.value; return; } LF.title = $('#lTitle').value; LF.time = $('#lTime').value; LF.kind = $('#lKind').value; LF.memo = $('#lMemo').value; LF.text = $('#lText').value; };
-  $('#sheet').onchange = ev => { if (ev.target.id === 'lFlip') LF.flip = ev.target.checked; if (ev.target.id === 'lLayout') { LF.layout = ev.target.value; drawPage(); } if (ev.target.id === 'lLeg') { const l = legs[+ev.target.value]; LF.leg = l ? { a: l.a, b: l.b } : null; } };
+  fitPrev(); sendPreview();
+  $('#sheet').oninput = ev => { sendPreview(); if (ev.target.dataset && ev.target.dataset.cap !== undefined) { LF.caps[ev.target.dataset.cap] = ev.target.value; return; } LF.title = $('#lTitle').value; LF.time = $('#lTime').value; LF.kind = $('#lKind').value; LF.memo = $('#lMemo').value; LF.text = $('#lText').value; };
+  $('#sheet').onchange = ev => { sendPreview(); if (ev.target.id === 'lFlip') LF.flip = ev.target.checked; if (ev.target.id === 'lLayout') { LF.layout = ev.target.value; drawPage(); } if (ev.target.id === 'lLeg') { const l = legs[+ev.target.value]; LF.leg = l ? { a: l.a, b: l.b } : null; } };
   $('#dim').hidden = false;
 }
+/* 即時預覽：iframe 開回憶錄網站的 ?embedpreview=1，用 postMessage 把目前表單的內容（含用到的私人照片）送過去，由它用真正的版面畫出來 */
+let LPV = (() => { try { return localStorage.getItem('tt-lpv') || 'm'; } catch (e) { return 'm'; } })(), LPT = 0;
+function pageData(f) { return { day: f.day, layout: f.layout, media: f.layout === 'text' ? [] : f.media, title: f.title.trim(), time: f.time.trim(), kind: f.kind.trim(), memo: f.memo.trim(), text: f.text.trim(), leg: f.layout === 'text' ? (f.leg || null) : null, flip: !LCANVAS[f.layout] && !!f.flip, caps: f.layout === 'text' ? [] : f.media.map(id => (f.caps[id] || '').trim()) }; }
+function fitPrev() { const box = $('#lPvBox'), fr = $('#lPvF'), tip = $('#lPvTip'); if (!box || !fr) return; if (LPV === 'x') { box.style.display = 'none'; if (tip) tip.style.display = 'none'; return; } box.style.display = ''; if (tip) tip.style.display = '';
+  const big = $('#lPrev').classList.contains('big'), W = LPV === 'd' ? 1280 : 390, H = LPV === 'd' ? 720 : 700, cw = box.clientWidth, sc = Math.min(cw / W, (innerHeight * (big ? .84 : .42)) / H, big ? 1.4 : 1);
+  fr.style.width = W + 'px'; fr.style.height = H + 'px'; fr.style.transform = 'scale(' + sc + ')'; fr.style.left = Math.max(0, (cw - W * sc) / 2) + 'px'; box.style.height = Math.round(H * sc) + 'px'; }
+function sendPreview() { clearTimeout(LPT); LPT = setTimeout(() => { const fr = $('#lPvF'); if (!fr || !fr.contentWindow || !LF || LPV === 'x') return;
+  if ($('#lTitle')) { LF.title = $('#lTitle').value; LF.time = $('#lTime').value; LF.kind = $('#lKind').value; LF.memo = $('#lMemo').value; LF.text = $('#lText').value; }
+  const page = pageData(LF), priv = {}; page.id = LF.id || 'preview';
+  page.media.forEach(id => { const [t, a] = id.split(':'); if (t === 'priv' || t === 'vid') { const p = (cur.photos || []).find(x => x.id === a); if (p) priv[a] = { kind: p.kind || '', data: p.data || '', url: p.url || '', note: p.note || '' }; } });
+  try { fr.contentWindow.postMessage({ type: 'kyu-preview', page, priv }, location.origin); } catch (e) {} }, 180); }
+addEventListener('message', e => { if (e.origin === location.origin && e.data && e.data.type === 'kyu-preview-ready') sendPreview(); });
+addEventListener('resize', () => fitPrev());
 async function layoutAct(a, el) {
+  if (a === 'l_pvbig') { const pv = $('#lPrev'), on = pv.classList.toggle('big'); el.textContent = on ? '✕ 縮回' : '⤢ 放大'; if (on && LPV === 'x') { LPV = 'm'; document.querySelectorAll('[data-act=l_pv]').forEach(b => b.classList.toggle('on', b.dataset.m === LPV)); } fitPrev(); return sendPreview(); }
+  if (a === 'l_pv') { LPV = el.dataset.m; try { localStorage.setItem('tt-lpv', LPV); } catch (e) {} document.querySelectorAll('[data-act=l_pv]').forEach(b => b.classList.toggle('on', b.dataset.m === LPV)); fitPrev(); return sendPreview(); }
   if (a === 'l_day') { LDAY = +el.dataset.d; return render(); }
   if (a === 'l_add') return openPage(null);
   if (a === 'l_edit') return openPage(el.dataset.id);
@@ -1054,7 +1071,7 @@ async function layoutAct(a, el) {
   if (a === 'l_save') { const f = LF, base = lPages(f.day).reduce((m, p) => Math.max(m, p.order || 0), 0);
     if (el.dataset.ok !== '1') { const w = $('#lWhy'); if (w) w.scrollIntoView({ block: 'center', behavior: 'smooth' }); return toast('還不能存：' + el.dataset.why); }
     if (el.dataset.busy) return; el.dataset.busy = 1; const lbl = el.textContent; el.textContent = '儲存中…';
-    const data = { day: f.day, layout: f.layout, media: f.layout === 'text' ? [] : f.media, title: f.title.trim(), time: f.time.trim(), kind: f.kind.trim(), memo: f.memo.trim(), text: f.text.trim(), leg: f.layout === 'text' ? (f.leg || null) : null, flip: !LCANVAS[f.layout] && !!f.flip, caps: f.layout === 'text' ? [] : f.media.map(id => (f.caps[id] || '').trim()), by: me.uid, at: Date.now() };
+    const data = Object.assign(pageData(f), { by: me.uid, at: Date.now() });
     try { if (f.id) { const old = (cur.pages || []).find(x => x.id === f.id); data.order = old && old.order != null ? old.order : base + 1; await api.set(cur.id, 'pages', f.id, data); } else { data.order = base + 1; await api.add(cur.id, 'pages', data); } }
     catch (e) { delete el.dataset.busy; el.textContent = lbl; console.error(e); return toast(/permission/i.test((e && (e.code || e.message)) || '') ? '存不進去：Firebase 的規則還沒有 pages，請把 firestore.rules 貼到主控台發布' : '存不進去：' + errMsg(e)); }
     closeSheet(); return toast((f.id ? '已儲存' : '已加到 Day ' + f.day) + '，回憶錄網站重新整理就會更新'); }
