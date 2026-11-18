@@ -732,6 +732,16 @@ const phCardName = k => k ? (CARDS && CARDS[k]) || k : '私人相簿（不屬於
 const phGroupKey = p => p.card ? 'c:' + p.card : p.day ? 'd:' + p.day : '';
 const phGroupName = k => k.startsWith('c:') ? phCardName(k.slice(2)) : k.startsWith('d:') ? `Day ${k.slice(2)} 隨手拍（沒對到卡片）` : '私人相簿（不屬於哪一天、哪張卡片）';
 const phSize = L => L.reduce((a, p) => a + (p.data ? p.data.length * 3 / 4 : 0), 0);
+/* 一次貼很多支影片：ytLines 從文字裡逐行抓連結（連結後面的字當這支的備註）；ytFromHtml 從複製來的網頁內容（YouTube 播放清單頁、Studio 內容頁）的超連結抓 */
+const YT_RE = /(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/|\/live\/|studio\.youtube\.com\/video\/)([\w-]{11})(?![\w-])/;
+function ytLines(text) { const out = [], seen = {}; String(text || '').split(/\n/).forEach(line => { const parts = line.trim().split(/\s+/), i = parts.findIndex(w => YT_RE.test(w)); if (i < 0) return;
+    const w = parts[i], id = w.match(YT_RE)[1]; if (seen[id]) return; seen[id] = 1; out.push({ id, url: /\/shorts\//.test(w) ? 'https://youtube.com/shorts/' + id : 'https://youtu.be/' + id, note: parts.slice(i + 1).join(' ').slice(0, 80) }); }); return out; }
+function ytFromHtml(html) { const map = new Map(); let doc; try { doc = new DOMParser().parseFromString(html, 'text/html'); } catch (e) { return []; }
+  doc.querySelectorAll('a[href]').forEach(a => { const h = a.getAttribute('href') || '', m = h.match(YT_RE) || ('https://www.youtube.com' + h).match(YT_RE); if (!m) return; const id = m[1], t = (a.getAttribute('title') || a.textContent || '').replace(/\s+/g, ' ').trim();
+    const o = map.get(id) || { id, short: false, title: '' }; if (/\/shorts\//.test(h)) o.short = true; if (t.length > o.title.length && t.length <= 80 && !/^[\d:.\s]+$/.test(t)) o.title = t; map.set(id, o); });
+  return [...map.values()]; }
+document.addEventListener('paste', ev => { if (!ev.target || ev.target.id !== 'phvid' || !ev.clipboardData) return; const html = ev.clipboardData.getData('text/html'); if (!html) return; const L = ytFromHtml(html); if (!L.length) return;
+  ev.preventDefault(); const ta = ev.target, add = L.map(o => (o.short ? 'https://youtube.com/shorts/' : 'https://youtu.be/') + o.id + (o.title ? '　' + o.title : '')).join('\n'); ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : '') + add; ta.rows = Math.min(12, Math.max(3, ta.value.split('\n').length + 1)); toast('抓到 ' + L.length + ' 支影片，確認後按「加入影片」'); });
 const ytId = u => { const m = String(u || '').match(/(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/|\/live\/)([\w-]{11})/); return m ? m[1] : ''; };
 let PHSEL = '', PHDAY = 0;   // 上傳時選的卡片、哪一天
 function pPhoto() {
@@ -751,8 +761,9 @@ function pPhoto() {
       <div style="margin-top:10px"><div class="small">備註（會變成照片下面的手寫註記；這批每張都一樣，之後可以逐張改）</div><textarea id="phnote" class="inp" rows="2" style="width:100%;margin-top:4px" placeholder="例如：臨時看到的夕陽、在車上吃的烤飯糰"></textarea></div>
       <label class="btn phdrop" id="phdrop" style="cursor:pointer"><b>選照片（可多張）</b><span>或把照片直接拖到這裡</span><input id="phfile" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden></label>
       <div id="phprog" class="small" style="margin-top:6px"></div>
-      <div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:10px"><div class="small">影片：先上傳到 YouTube 設「不公開」，把連結貼這裡（用上面選的卡片／天／時間／備註）。連結只存在這裡，登入的成員才看得到。</div>
-      <div style="display:flex;gap:8px;margin-top:4px"><input id="phvid" class="inp" style="flex:1" placeholder="https://youtu.be/…" inputmode="url"><button class="btn s" style="width:auto;margin:0;padding:10px 14px" data-act="phvidadd">加入影片</button></div></div>
+      <div style="margin-top:14px;border-top:1px dashed var(--line);padding-top:10px"><div class="small">影片：先上傳到 YouTube 設「不公開」，把連結貼這裡（用上面選的卡片／天／時間／備註）。連結只存在這裡，登入的成員才看得到。<br><b>可以一次貼很多支</b>：每行一個連結，連結後面空一格可以接這支的備註；或在 YouTube 的播放清單／內容頁把影片清單選起來複製，直接貼上會自動抓出每一支。</div>
+      <textarea id="phvid" class="inp" rows="3" style="width:100%;margin-top:4px;font-size:13px" placeholder="https://youtu.be/…&#10;https://youtu.be/…　湖面的影片"></textarea>
+      <button class="btn s" style="width:auto;margin:6px 0 0;padding:10px 14px" data-act="phvidadd">加入影片</button></div>
       <button class="lnk" data-act="phlist" style="margin-top:12px;font-size:12px">📋 複製清單（貼給 Claude 調版面）</button></div>`;
   }
   const n = L.length, mb = phSize(L) / 1048576;
@@ -935,9 +946,12 @@ document.addEventListener('click', async ev => {
     if (a === 'copy') { try { await navigator.clipboard.writeText(el.dataset.u); toast('已複製，貼到 LINE 群組'); } catch (e) { prompt('複製這個連結', el.dataset.u); } return; }
     if (a && a.startsWith('l_')) return await layoutAct(a, el);   // 要 await，存檔失敗（例如規則還沒發布）才會被下面的 catch 接到、跳出訊息
     if (a === 'phview') return phView(el.dataset.id);
-    if (a === 'phvidadd') { const url = ($('#phvid').value || '').trim(); if (!ytId(url)) return toast('看起來不是 YouTube 連結'); const card = ($('#phcard') || {}).value || '', day = +(($('#phday') || {}).value || 0), t = (($('#phtime') || {}).value || '').trim(), note = (($('#phnote') || {}).value || '').trim();
+    if (a === 'phvidadd') { const L = ytLines($('#phvid').value || ''); if (!L.length) return toast('沒有找到 YouTube 連結');
+      const card = ($('#phcard') || {}).value || '', day = +(($('#phday') || {}).value || 0), t = (($('#phtime') || {}).value || '').trim(), note = (($('#phnote') || {}).value || '').trim();
+      const have = new Set((cur.photos || []).filter(p => p.kind === 'video').map(p => ytId(p.url))), todo = L.filter(x => !have.has(x.id)), skip = L.length - todo.length;
       const base = (cur.photos || []).filter(p => phGroupKey(p) === phGroupKey({ card, day })).reduce((m, p) => Math.max(m, p.order || 0), 0);
-      await api.add(cur.id, 'photos', { kind: 'video', url, card, day, t, note, order: base + 1, by: me.uid, at: Date.now() }); $('#phvid').value = ''; return toast('已加入影片'); }
+      el.disabled = true; try { let n = 0; for (const x of todo) await api.add(cur.id, 'photos', { kind: 'video', url: x.url, card, day, t, note: x.note || note, order: base + (++n), by: me.uid, at: Date.now() + n }); } finally { el.disabled = false; }
+      if ($('#phvid')) $('#phvid').value = ''; return toast(todo.length ? '加入了 ' + todo.length + ' 支影片' + (skip ? '（' + skip + ' 支之前加過，略過）' : '') : '這 ' + skip + ' 支之前都加過了'); }
     if (a === 'phlist') { const L = (cur.photos || []).slice().sort((x, y) => phGroupKey(x).localeCompare(phGroupKey(y)) || (x.order || 0) - (y.order || 0));
       const txt = ['Oita_Fukoka_2026 私人照片清單（' + L.length + ' 項）', '格式：類型 | 卡片 | 天 | 時間 | 尺寸 | 備註', ...L.map(p => [p.kind === 'video' ? '影片' : '照片', p.card || '-', p.day || '-', p.t || '-', p.kind === 'video' ? p.url : (p.w + 'x' + p.h), (p.note || '').replace(/\n/g, ' / ')].join(' | '))].join('\n');
       try { await navigator.clipboard.writeText(txt); toast('已複製 ' + L.length + ' 項，貼到聊天視窗'); } catch (e) { prompt('複製這段', txt); } return; }

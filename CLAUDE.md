@@ -218,6 +218,10 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
 - **2026-11-17 影片連結與複製清單**：影片不存 Firestore（太大），上傳卡下方多一欄「影片」貼 YouTube 連結（設「不公開」）→ `phvidadd` 存成 `{kind:'video', url, card, day, t, note, order, by, at}`（沿用當時填的卡片／天／時間／備註）；
   縮圖格用 `i.ytimg.com/vi/<id>/hqdefault.jpg`（`ytId()` 解析 youtu.be／watch?v／embed／shorts／live）加 ▶，點了另開 YouTube。連結只在 Firestore，公開網頁原始碼不會有。
   「📋 複製清單（貼給 Claude 調版面）」（`phlist`）把全部項目依分組排序，複製成文字「類型 | 卡片 | 天 | 時間 | 尺寸或網址 | 備註」（剪貼簿失敗改 prompt）。`app.js?v=20261117b`。回憶錄網站要另外把 `kind:'video'` 的項目畫成「▶ 影片」（待做）。
+- **2026-11-20 影片連結一次貼很多支**（使用者問能不能直接用 iCloud 的影片——不行：iCloud 連結 30 天失效、共享相簿的公開網站不能嵌入也沒有封面；真正的原因是「一支一支上傳 YouTube 很麻煩」）：
+  影片欄從單行輸入改成 `<textarea id="phvid">`。`ytLines(text)` 逐行抓連結，連結後面的字當這支的備註（沒寫就用上面的共用備註），同一批重複的只留一支；`phvidadd` 逐支新增、已經加過的（同一個影片 id）略過，提示「加入了 N 支（M 支之前加過，略過）」。
+  另外接 `paste`：剪貼簿有 `text/html` 而且裡面有 YouTube 超連結時（在播放清單頁或 Studio 內容頁把清單選起來複製），`ytFromHtml` 從 `<a href>` 抓出每支的 id（`watch?v=`、`youtu.be/`、`/shorts/`、`studio.youtube.com/video/<id>`）和最長的連結文字當標題，填成「連結　標題」一行一支，讓使用者確認後再按加入。**這段只用自己寫的 HTML 測過，沒有拿真的 YouTube 頁面試**。`app.js?v=20261120b`。
+  給使用者的上傳建議：電腦版 YouTube Studio 一次可以拖 15 支；到「內容」頁可以多選後一次改瀏覽權限。驗證：scratchpad `r12/t.js`。
 - `KNOWN` 加 `Oita_Fukoka_2026`、`2027-taiwan`；`openTrip` 多訂閱 `photos`（讀不到只影響照片頁，`cur.phErr`）。`index.html` 的 `app.js?v=20261116a`，分頁列改六欄。
 - 回憶錄網站那邊：登入後讀同一個集合，把 `card` 對到的照片併進卡片（做法記在 Oita_Fukoka_2026 的 CLAUDE.md）。
 - 驗證：本機把 trip-tools 與 Oita_Fukoka_2026 symlink 到同一個資料夾起 http.server，Playwright `?mock=1&as=哥哥` 建立行程 → 照片頁上傳 2 張（46 KB、193 KB）→ 選金鱗湖再上傳 1 張 → 分組顯示、看大圖；`?as=路人` 進不去。真正的 Firebase 要使用者上線後測。
