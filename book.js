@@ -514,6 +514,7 @@ function laySvg(l) {   // 版型的小示意圖
   else if (l.k === 'pola') r = [[-6, 2, 4, 24, 26], [5, 18, 18, 24, 26], [-3, 4, 32, 22, 24]].map(([a, x, y, w, h]) => `<g transform="rotate(${a} ${x + w / 2} ${y + h / 2})"><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#fff" stroke="#b9ab94"/><rect x="${x + 2}" y="${y + 2}" width="${w - 4}" height="${h - 8}" fill="#c9b9a0"/></g>`).join('');
   else if (l.k === 'eki') r = `<rect width="${W}" height="${H}" fill="#cfd4da" rx="2"/><rect x="8" y="3" width="28" height="9" fill="#fff" stroke="#47505a"/><rect x="8" y="10" width="28" height="3" fill="#1f5aa8"/>` + fill(3, 15, 38, 30) + `<rect x="0" y="48" width="${W}" height="4" fill="#f2c230"/><rect x="0" y="53" width="${W}" height="5" fill="#3b3631"/>`;
   else if (l.k === 'sunset') r = `<defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2c2a5a"/><stop offset=".6" stop-color="#e2724a"/><stop offset="1" stop-color="#fbd889"/></linearGradient></defs><rect width="${W}" height="${H}" fill="url(#sg)" rx="2"/><circle cx="30" cy="14" r="5" fill="#ffe2a0"/><path d="M0 48 L10 40 L20 45 L30 36 L44 44 V58 H0Z" fill="#2a1a26"/>` + fill(3, 22, 14, 24) + fill(18, 26, 11, 18) + fill(30, 26, 11, 18);
+  else if (l.k === 'bus') r = `<rect x="1" y="6" width="${W - 2}" height="44" rx="6" fill="#efe9db" stroke="#b9ab94"/><rect x="14" y="1" width="16" height="6" fill="#16130f"/><rect x="0" y="52" width="${W}" height="6" fill="#4b4f55"/>` + fill(4, 10, 9, 30) + fill(15, 10, 9, 30) + fill(26, 14, 15, 22, '#a8432f') + `<rect x="2" y="43" width="${W - 4}" height="2" fill="#2f7d5a"/>`;
   else if (l.k === 'film') r = `<rect width="${W}" height="${H}" fill="#2a2622" rx="2"/>` + [0, 1, 2].map(i => fill(2 + i * 14, 18, 13, 22, '#c9b9a0')).join('');
   else r = fill(0, 0, W, 28) + fill(0, 30, 21, 28) + fill(23, 30, 21, 28);
   return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${r}</svg>`;
@@ -521,7 +522,7 @@ function laySvg(l) {   // 版型的小示意圖
 function recommend(ids) {   // 依這頁的組合推薦版型
   const X2 = ids.map(itInfo).filter(Boolean), v = X2.filter(x => x[1] === 'v'), vv = v.filter(x => x[2] === 'v').length, vh = v.length - vv, ph = X2.filter(x => x[1] !== 'v'), pv = ph.filter(x => x[2] === 'v').length, pp = ph.filter(x => x[2] === 'p').length;
   const r = new Set();
-  if (vv >= 2) r.add('vduo'); if (vv >= 1 && vh >= 2) r.add('hatsu'); if (vv >= 1 && ph.length >= 2) r.add('vside'); if (vh >= 1 && ph.length >= 3) r.add('vtop'); if (v.length >= 1 && ph.length <= 2) r.add('vfull');
+  if (vv >= 2) r.add('vduo'); if (vv >= 1 && vh >= 2) r.add('hatsu'); if (X2.filter(x => x[2] === 'v').length >= 2 && X2.some(x => x[2] !== 'v')) r.add('bus'); if (vv >= 1 && ph.length >= 2) r.add('vside'); if (vh >= 1 && ph.length >= 3) r.add('vtop'); if (v.length >= 1 && ph.length <= 2) r.add('vfull');
   if (pp >= 1) r.add('pano'); if (ph.length >= 5) { r.add('wall'); r.add('main'); } if (ph.length >= 4) r.add('quad');
   if (pv >= 2) r.add('duo-v'); if (ph.length - pv - pp >= 2) r.add('duo-h'); if (ph.length >= 3) r.add(pv > ph.length / 2 ? 'trio-side' : 'trio'); if (X2.length >= 3 && X2.length <= 5) r.add('pola');
   return r;
