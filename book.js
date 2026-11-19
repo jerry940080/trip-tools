@@ -228,7 +228,7 @@ const clean = o => { const r = {}; for (const [k, v] of Object.entries(o)) if (v
 
 /* ───────── 事件 ───────── */
 async function onChange(ev) {
-  if (ev.target.classList.contains('mtt')) { const k = ev.target.dataset.k, v = ev.target.value.trim(), T = { ...((bpDoc('_meta') || {}).titles || {}) }; if (v) T[k] = v; else delete T[k];
+  if (ev.target.classList.contains('mtt')) { const k = ev.target.dataset.k, v0 = ev.target.value.trim(), v = v0 === (ev.target.dataset.orig || '\u0000') ? '' : v0, T = { ...((bpDoc('_meta') || {}).titles || {}) }; if (v) T[k] = v; else delete T[k];
     try { await mtSave({ titles: T }); X.toast(v ? '標題已改' : '已改回原本的標題'); } catch (err) { X.toast('存檔失敗：' + (err.code || err.message)); } return; }
   if (ev.target.classList.contains('tpn')) { const TP = tapesOf(), i = +ev.target.dataset.i; if (!TP[i]) return; TP[i].t = ev.target.value.trim(); try { await spSave('cass', { tapes: TP }); X.toast('卡帶名稱已存'); } catch (err) { X.toast('存檔失敗：' + (err.code || err.message)); } return; }
   if (ev.target.id === 'bkDir') { const fs = [...ev.target.files]; ev.target.value = ''; if (fs.length) await readFolder(fs); }
@@ -450,6 +450,8 @@ async function batchMove(ids, toK) {
 }
 /* 📄 頁面（2026-11-19）：每一頁改標題、在書裡隱藏／顯示。存 bookpages/_meta＝{titles:{頁:標題}, hidden:[頁…]}。
    改標題＝換掉書上那頁的大標題（車票、每天一句話、題詞沒有大標題，只能隱藏）。 */
+/* 排版頁卡上的標題：直接打字就改（存 _meta.titles，清空＝原本的標題） */
+function ltTitle(k, orig, own) { const t = ((bpDoc('_meta') || {}).titles || {})[k] || ''; return own ? `<input class="ltt mtt" data-k="${e(k)}" value="${e(t || orig)}" data-orig="${e(orig)}" placeholder="${e(orig)}" maxlength="40" title="點一下改標題">` : `<b>${e(t || orig)}</b>`; }
 async function mtSave(patch) { const d = bpDoc('_meta') || {}; await X.api.set(X.cur().id, 'bookpages', '_meta', { titles: d.titles || {}, hidden: d.hidden || [], ...patch, by: X.me().uid, at: Date.now() }); }
 function pagesView(own) {
   cpMerge();
@@ -522,7 +524,7 @@ function layoutView() {
   for (const p of pages) {
     const ids = pageIds(p.k); ids.forEach(i => used.add(i)); const d = bpDoc(p.k), lay = (d && d.layout) || 'auto', l = LY[lay] || LY.auto;
     const v = ids.filter(i => (itInfo(i) || [])[1] === 'v').length;
-    h += `<div class="lpg${p.custom ? ' cpp' : ''}" data-k="${e(p.k)}"><div class="lph"><div><small>${p.hid ? '<em style="color:var(--bad);font-style:normal">🙈 書上隱藏中・</em>' : ''}${p.custom ? '自己加的頁・' : ''}${p.d ? 'Day ' + p.d : ''}</small><b>${e(p.t)}${p.custom && own ? ` <button class="small" data-bk="cpedit" data-k="${e(p.k)}">✎ 修改</button>` : ''}</b><span>${ids.length - v} 張${v ? '・' + v + ' 支影片' : ''}${p.custom && !ids.length ? '・<em style="color:var(--bad);font-style:normal">還沒有照片，書上不會出現</em>' : ''}</span></div>
+    h += `<div class="lpg${p.custom ? ' cpp' : ''}${p.hid ? ' hid' : ''}" data-k="${e(p.k)}"><div class="lph"><div><small>${p.hid ? '<em style="color:var(--bad);font-style:normal">🙈 書上隱藏中・</em>' : ''}${p.custom ? '自己加的頁・' : ''}${p.d ? 'Day ' + p.d : ''}</small>${ltTitle(p.k, p.t0 || p.t, own)}${own ? `<span class="lhb"><button class="small mth${p.hid ? ' on' : ''}" data-bk="mthide" data-k="${e(p.k)}" title="${p.hid ? '放回書裡' : '在書裡隱藏這一頁'}">${p.hid ? '🙈 已隱藏' : '👁 顯示中'}</button>${p.custom ? `<button class="small" data-bk="cpedit" data-k="${e(p.k)}">✎ 地點・文字</button>` : ''}</span>` : ''}<span>${ids.length - v} 張${v ? '・' + v + ' 支影片' : ''}${p.custom && !ids.length ? '・<em style="color:var(--bad);font-style:normal">還沒有照片，書上不會出現</em>' : ''}</span></div>
       <a class="lnk" href="/${repo}/index.html#pg=${e(p.k)}" target="_blank" rel="noopener">在書裡看 ↗</a>
       <button class="lay" data-bk="laypick" data-k="${e(p.k)}" ${own ? '' : 'disabled'}>${laySvg(l)}<span>${e(l.n)}</span></button></div>
       <div class="lst" data-k="${e(p.k)}">${ids.map(tileHTML).join('')}</div>${own ? `<button class="cpadd" data-bk="cpadd" data-after="${e(p.k)}">＋ 在這頁後面加一頁</button>` : ''}</div>`;
@@ -532,7 +534,7 @@ function layoutView() {
   if (spList().length) h += `<div class="day"><span>特殊頁（版面固定，拖進每一格就換掉書上的內容）</span></div>`;
   for (const sp of spList()) {
     const pg = pageOf(sp.k), inSlot = new Set();
-    h += `<div class="lpg spg" data-k="${e(sp.k)}"><div class="lph"><div><small>${pg && pg.d ? 'Day ' + pg.d + '・' : ''}${e(sp.kind)}</small><b>${e(sp.t)}</b></div><a class="lnk" href="/${repo}/index.html#pg=${e(sp.k)}" target="_blank" rel="noopener">在書裡看 ↗</a></div>`;
+    h += `<div class="lpg spg" data-k="${e(sp.k)}"><div class="lph"><div><small>${(BK.pages || []).find(q => q.k === sp.k && q.hid) ? '<em style="color:var(--bad);font-style:normal">🙈 書上隱藏中・</em>' : ''}${pg && pg.d ? 'Day ' + pg.d + '・' : ''}${e(sp.kind)}</small>${ltTitle(sp.k, sp.t, own)}${own ? (() => { const hid = new Set((bpDoc('_meta') || {}).hidden || []).has(sp.k); return `<span class="lhb"><button class="small mth${hid ? ' on' : ''}" data-bk="mthide" data-k="${e(sp.k)}">${hid ? '🙈 已隱藏' : '👁 顯示中'}</button></span>`; })() : ''}</div><a class="lnk" href="/${repo}/index.html#pg=${e(sp.k)}" target="_blank" rel="noopener">在書裡看 ↗</a></div>`;
     for (const z of sp.slots || []) { const ids = slotIds(sp.k, z.id), set = slotSet(sp.k, z.id); ids.forEach(i => inSlot.add(i));
       h += `<div class="slh"><b>${e(z.n)}</b><small>${kindTxt(z.k)}・最多 ${z.max} 項${ids.length > z.max ? `<em>（超過的 ${ids.length - z.max} 項不會出現）</em>` : ''}${set ? '' : '・目前是原本的內容'}</small>${set && own ? `<button class="small" data-bk="sreset" data-k="${e(sp.k)}" data-s="${e(z.id)}">還原</button>` : ''}</div>
         <div class="lst" data-k="${e(sp.k)}" data-slot="${e(z.id)}" data-sk="${z.k}">${ids.map(tileHTML).join('')}</div>`; }
