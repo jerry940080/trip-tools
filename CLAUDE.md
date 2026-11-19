@@ -322,6 +322,7 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
   上面是**書本的即時預覽**（iframe＝`/<repo>/index.html?embedpreview=1`，📱 手機 390×800／🖥 電腦 1280×760，`lpFit` 縮放），格子左上有編號；右邊（手機在下面）是這頁的照片影片一排（拖曳排順序、點一張問要不要拿掉）、
   勾選「照我排的順序放進格子」（`fixed`：第 1 張放第 1 格，不勾就照直橫自動分）、版型卡片（推薦＋全部）。**每一個改動都先送預覽**（`lpSend`，postMessage `{type:'hkr-preview', k, doc:{layout, items, fixed}, pv}`），按「存檔」才寫進 `bookpages/{頁}`（`writeAll` 更新私人項目的頁＋`layout/items/fixed`；拿掉的私人項目 `media.page` 清空）。
   私人照片影片在 trip-tools 這邊組成 Blob URL 傳給 iframe（`lpUrls`，同網域讀得到，最多留 40 個）。`sheetSwipe` 在 `.lst`／iframe 上不觸發下拉關閉。關掉表單時 `#dim` 的 MutationObserver 把 `LP` 清掉。`app.js?v=20261120o`。驗證 scratchpad `bkt/t12.js`（電腦、手機各 10 項）。
+- **2026-11-19 版型「初雪（一直三橫）」**：書本新增 `hatsu`（左邊直式影片、右邊三支橫式影片，飄雪背景），版型清單由 `book-media.json` 帶進來；`recommend` 在有 1 支直式＋2 支以上橫式影片時推薦。`app.js?v=20261120p`。
 
 ## 只有網站主人能建立新的一趟（2026-11-12）
 使用者打算把行程網站分享到旅遊版，資安盤點發現：任何人用 Google 登入後都能建立行程（`trips/{t}` 的 create 只檢查 owner 是自己），

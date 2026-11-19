@@ -521,7 +521,7 @@ function laySvg(l) {   // 版型的小示意圖
 function recommend(ids) {   // 依這頁的組合推薦版型
   const X2 = ids.map(itInfo).filter(Boolean), v = X2.filter(x => x[1] === 'v'), vv = v.filter(x => x[2] === 'v').length, vh = v.length - vv, ph = X2.filter(x => x[1] !== 'v'), pv = ph.filter(x => x[2] === 'v').length, pp = ph.filter(x => x[2] === 'p').length;
   const r = new Set();
-  if (vv >= 2) r.add('vduo'); if (vv >= 1 && ph.length >= 2) r.add('vside'); if (vh >= 1 && ph.length >= 3) r.add('vtop'); if (v.length >= 1 && ph.length <= 2) r.add('vfull');
+  if (vv >= 2) r.add('vduo'); if (vv >= 1 && vh >= 2) r.add('hatsu'); if (vv >= 1 && ph.length >= 2) r.add('vside'); if (vh >= 1 && ph.length >= 3) r.add('vtop'); if (v.length >= 1 && ph.length <= 2) r.add('vfull');
   if (pp >= 1) r.add('pano'); if (ph.length >= 5) { r.add('wall'); r.add('main'); } if (ph.length >= 4) r.add('quad');
   if (pv >= 2) r.add('duo-v'); if (ph.length - pv - pp >= 2) r.add('duo-h'); if (ph.length >= 3) r.add(pv > ph.length / 2 ? 'trio-side' : 'trio'); if (X2.length >= 3 && X2.length <= 5) r.add('pola');
   return r;
