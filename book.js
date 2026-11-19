@@ -228,6 +228,7 @@ const clean = o => { const r = {}; for (const [k, v] of Object.entries(o)) if (v
 
 /* ───────── 事件 ───────── */
 async function onChange(ev) {
+  if (ev.target.id === 'lpFix' && LP) { LP.fixed = ev.target.checked; return lpSend(); }
   if (ev.target.classList.contains('mtt')) { const k = ev.target.dataset.k, v0 = ev.target.value.trim(), v = v0 === (ev.target.dataset.orig || '\u0000') ? '' : v0, T = { ...((bpDoc('_meta') || {}).titles || {}) }; if (v) T[k] = v; else delete T[k];
     try { await mtSave({ titles: T }); X.toast(v ? '標題已改' : '已改回原本的標題'); } catch (err) { X.toast('存檔失敗：' + (err.code || err.message)); } return; }
   if (ev.target.classList.contains('tpn')) { const TP = tapesOf(), i = +ev.target.dataset.i; if (!TP[i]) return; TP[i].t = ev.target.value.trim(); try { await spSave('cass', { tapes: TP }); X.toast('卡帶名稱已存'); } catch (err) { X.toast('存檔失敗：' + (err.code || err.message)); } return; }
@@ -236,6 +237,7 @@ async function onChange(ev) {
 async function onClick(ev) {
   const img = ev.target.closest('#bkImg');
   if (img && ED && X.isOwner()) { const r = img.getBoundingClientRect(); ED.focus = { x: Math.round((ev.clientX - r.left) / r.width * 100), y: Math.round((ev.clientY - r.top) / r.height * 100) }; return drawFocus(); }
+  const lpt = ev.target.closest('.lpst .lt'); if (lpt && LP) { if (confirm('這一張從這頁拿掉？（還沒存檔前都可以按取消）')) { LP.items = LP.items.filter(i => i !== lpt.dataset.id); lpt.remove(); lpSend(); } return; }
   const lt = ev.target.closest('.lst .lt'); if (lt && !BK.drag && X.isOwner()) { if (BK.lsel) { const i = lt.dataset.id; BK.lsel.has(i) ? BK.lsel.delete(i) : BK.lsel.add(i); return lselPaint(); } return openTile(lt.dataset.id); }   // 排版模式點縮圖：小選單
   const el = ev.target.closest('[data-bk]'); if (!el) return;
   const a = el.dataset.bk, c = X.cur(), id = c && c.id;
@@ -290,6 +292,14 @@ async function onClick(ev) {
     if (a === 'tadd') { const TP = tapesOf(); TP.push({ t: '新的卡帶 ' + (TP.length + 1), items: [] }); await spSave('cass', { tapes: TP }); X.render(); return X.toast('加了一捲，把照片或影片拖進去'); }
     if (a === 'tdel') { const TP = tapesOf(), i = +el.dataset.i; if (TP[i].items.length && !confirm(`刪除卡帶「${TP[i].t}」？裡面的 ${TP[i].items.length} 項會回到「不放進書裡」。`)) return; TP.splice(i, 1); await spSave('cass', { tapes: TP }); X.render(); return X.toast('已刪除這捲'); }
     if (a === 'tup') { const TP = tapesOf(), i = +el.dataset.i; if (i < 1) return; [TP[i - 1], TP[i]] = [TP[i], TP[i - 1]]; await spSave('cass', { tapes: TP }); return X.render(); }
+    if (a === 'lpdev') { LP.dev = el.dataset.v; lpDraw(); lpFit(); return; }
+    if (a === 'lplay') { LP.layout = el.dataset.l; document.querySelectorAll('#lpC .lyc').forEach(b => b.classList.toggle('on', b.dataset.l === LP.layout)); return lpSend(); }
+    if (a === 'lpsave') { const d = bpDoc(LP.k) || {}, o = {}; for (const [x, y] of Object.entries(d)) if (x !== 'id') o[x] = y;
+      el.disabled = true; el.textContent = '儲存中…';
+      try { for (const i of LP.orig) if (i.startsWith('pv:') && !LP.items.includes(i)) { const m = mById(i.slice(3)); if (m && m.page === LP.k) await X.api.update(id, 'media', m.id, { page: '' }); }
+        await writeAll([{ k: LP.k, ids: LP.items }]); await X.api.set(id, 'bookpages', LP.k, { ...o, layout: LP.layout, items: LP.items, fixed: LP.fixed, by: X.me().uid, at: Date.now() }); }
+      catch (err) { el.disabled = false; el.textContent = '存檔'; return X.toast('存檔失敗：' + (err.code || err.message)); }
+      document.getElementById('dim').hidden = true; document.getElementById('sheet').classList.remove('lpw'); LP = null; X.render(); return X.toast('版面已存'); }
     if (a === 'laysel') { const k = el.dataset.k, ids = pageIds(k); await X.api.set(id, 'bookpages', k, { layout: el.dataset.l, items: ids, by: X.me().uid, at: Date.now() }); document.getElementById('dim').hidden = true; X.render(); return X.toast('版型已換'); }
     if (a === 'selmode') { BK.sel = BK.sel ? null : new Set(); return X.render(); }
     if (a === 'pick') { BK.sel.has(el.dataset.id) ? BK.sel.delete(el.dataset.id) : BK.sel.add(el.dataset.id); return X.render(); }
@@ -664,12 +674,49 @@ async function tileMove(id, toK, how) {   // how：'to' 移到 toK 最後、'poo
   X.render();
   if (typeof how === 'number') openTile(id); else { document.getElementById('dim').hidden = true; X.toast(how === 'trash' ? '已放進刪除區' : how === 'pool' ? '已從書裡拿掉' : '已移到「' + (toK.includes('|') ? (whereIs(id).label || '特殊頁') : pageLabel(toK)) + '」'); }
 }
+/* 版型・預覽（2026-11-19）：換版型、拖曳順序、「照我排的順序」都先在上面的書本預覽看（iframe＝書本的 ?embedpreview=1，postMessage 送還沒存的設定），按「存檔」才寫進 bookpages。 */
+let LP = null;
 function openLayPick(k) {
-  const LY = BK.bm.layouts || [], d = bpDoc(k), cur = (d && d.layout) || 'auto', ids = pageIds(k), rec = recommend(ids), pg = (BK.bm.pages || []).find(p => p.k === k);
-  const card = l => `<button class="lyc${l.k === cur ? ' on' : ''}" data-bk="laysel" data-k="${e(k)}" data-l="${l.k}">${laySvg(l)}<div><b>${e(l.n)}${rec.has(l.k) ? '<em>推薦</em>' : ''}</b><span>${e(l.d)}</span><small>適合：${e(l.fit)}</small></div></button>`;
-  const sh = document.getElementById('sheet');
-  sh.innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:17px">版型・${e(pg ? pg.t : k)}</b><button class="small" data-act="close">關閉</button></div>
-    <div class="small" style="margin:4px 0 8px">這頁：${ids.length} 項。紅色格子＝影片優先。照片比格子多時，每格會輪播。</div>
-    ${rec.size ? `<div class="lab">推薦</div><div class="lyg">${LY.filter(l => rec.has(l.k)).map(card).join('')}</div><div class="lab">全部</div>` : ''}<div class="lyg">${LY.map(card).join('')}</div>`;
-  document.getElementById('dim').hidden = false;
+  const d = bpDoc(k) || {}, pg = (BK.bm.pages || []).find(p => p.k === k);
+  LP = { k, layout: d.layout || 'auto', items: pageIds(k), orig: pageIds(k), fixed: !!d.fixed, dev: LP && LP.dev || (matchMedia('(min-width:900px)').matches ? 'd' : 'm'), t: pg ? pg.t : k, ready: false };
+  const sh = document.getElementById('sheet'); sh.classList.add('lpw');
+  sh.innerHTML = `<div class="grab"></div><div class="lpwh"><b>版型・${e(LP.t)}</b><span class="seg sm"><button data-bk="lpdev" data-v="m">📱 手機</button><button data-bk="lpdev" data-v="d">🖥 電腦</button></span><button class="small" data-act="close">取消</button></div>
+    <div class="lpwb"><div class="lpv"><div class="lpvbox" id="lpBox"><iframe id="lpF" src="/${X.cur().id}/index.html?embedpreview=1" title="預覽"></iframe></div><div class="small lpvn">上面是書本的實際樣子（還沒存檔）。格子左上的數字＝第幾格。</div></div>
+    <div class="lpc" id="lpC"></div></div>
+    <div class="acts lpa"><button class="btn" data-bk="lpsave">存檔</button><button data-act="close">取消</button></div>`;
+  document.getElementById('dim').hidden = false; lpDraw(); lpFit(); lpSend();
 }
+function lpDraw() {
+  const LY = BK.bm.layouts || [], rec = recommend(LP.items), c = document.getElementById('lpC'); if (!c) return;
+  document.querySelectorAll('[data-bk=lpdev]').forEach(b => b.classList.toggle('on', b.dataset.v === LP.dev));
+  const card = l => `<button class="lyc${l.k === LP.layout ? ' on' : ''}" data-bk="lplay" data-l="${l.k}">${laySvg(l)}<div><b>${e(l.n)}${rec.has(l.k) ? '<em>推薦</em>' : ''}</b><span>${e(l.d)}</span></div></button>`;
+  c.innerHTML = `<div class="lab">照片影片的順序（拖曳調整；點一張可以拿掉）</div><div class="lst lpst">${LP.items.map(tileHTML).join('')}</div>
+    <label class="lpfx"><input type="checkbox" id="lpFix" ${LP.fixed ? 'checked' : ''}> 照我排的順序放進格子（第 1 張放第 1 格、第 2 張放第 2 格…）<small>不勾的話，會自動把直的照片放進直的格子、橫的放橫的格子</small></label>
+    <div class="lab">版型</div>${rec.size ? `<div class="lyg">${LY.filter(l => rec.has(l.k)).map(card).join('')}</div><div class="lab" style="margin-top:8px">全部</div>` : ''}<div class="lyg">${LY.map(card).join('')}</div>`;
+  const st = c.querySelector('.lpst');
+  (async () => { if (!SORT) SORT = (await import('./vendor/sortable.esm.js')).default; SORT.create(st, { animation: 160, delay: 120, delayOnTouchOnly: true, forceFallback: true, fallbackTolerance: 4,
+    onEnd: () => { LP.items = [...st.children].map(t => t.dataset.id).filter(Boolean); lpSend(); } }); })();
+}
+function lpFit() {
+  const box = document.getElementById('lpBox'), f = document.getElementById('lpF'); if (!box || !f) return;
+  const W = LP.dev === 'd' ? 1280 : 390, H = LP.dev === 'd' ? 760 : 800, bw = (box.parentElement || box).clientWidth || 300, sc = Math.min(1, bw / W, (innerHeight * (matchMedia('(min-width:900px)').matches ? (LP.dev === 'd' ? .5 : .62) : .34)) / H);
+  f.style.width = W + 'px'; f.style.height = H + 'px'; f.style.transform = `scale(${sc})`; box.style.height = Math.round(H * sc) + 'px'; box.style.width = Math.round(W * sc) + 'px';
+}
+const LPU = new Map();   // 預覽用的私人檔 Blob URL（存檔或關掉都不收回，最多留 40 個）
+async function lpUrls(m) {
+  if (LPU.has(m.id)) return LPU.get(m.id);
+  const o = { kind: m.kind, w: m.w, h: m.h, note: m.note || '', id: m.id, page: m.page };
+  o._f = URL.createObjectURL(await blobOf(m, 'f')); if (m.kind === 'video') try { o._p = URL.createObjectURL(await blobOf(m, 'p')); } catch (err) {}
+  LPU.set(m.id, o); while (LPU.size > 40) { const [k0, v0] = LPU.entries().next().value; URL.revokeObjectURL(v0._f); if (v0._p) URL.revokeObjectURL(v0._p); LPU.delete(k0); }
+  return o;
+}
+let lpT = 0;
+function lpSend() { clearTimeout(lpT); lpT = setTimeout(async () => {
+  const f = document.getElementById('lpF'); if (!f || !LP) return;
+  const pv = {}; for (const id of LP.items) if (id.startsWith('pv:')) { const m = mById(id.slice(3)); if (m) try { pv[m.id] = await lpUrls(m); } catch (err) {} }
+  try { f.contentWindow.postMessage({ type: 'hkr-preview', k: LP.k, doc: { layout: LP.layout, items: LP.items, fixed: LP.fixed }, pv }, location.origin); } catch (err) {}
+}, 150); }
+/* 表單關掉時把預覽的狀態收掉（其他表單共用 #sheet） */
+setTimeout(() => { const dim = document.getElementById('dim'); if (dim) new MutationObserver(() => { if (dim.hidden) { LP = null; const sh = document.getElementById('sheet'); if (sh) sh.classList.remove('lpw'); } }).observe(dim, { attributes: true, attributeFilter: ['hidden'] }); }, 0);
+addEventListener('message', ev => { if (ev.origin === location.origin && ev.data && ev.data.type === 'hkr-preview-ready' && LP) lpSend(); });
+addEventListener('resize', () => { if (LP && document.getElementById('lpF')) lpFit(); });

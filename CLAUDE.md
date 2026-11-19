@@ -318,6 +318,10 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
 - **2026-11-19 排版頁卡直接改標題、隱藏**（使用者：「不能直接在排版那邊讓我修改嗎」）：📐 排版每張頁卡（一般頁、自己加的頁、特殊頁）的標題換成看起來像文字的輸入框 `.ltt`（`ltTitle`，滑過出現框，打字後離開就存，改回原本的字＝拿掉設定），
   標題下面一排 `.lhb`：「👁 顯示中／🙈 已隱藏」（同 `mthide`）、自己加的頁多「✎ 地點・文字」。隱藏的頁卡變淡（`.lpg.hid`）。資料一樣是 `bookpages/_meta`，「📄 頁面」照舊可用（車票、每天一句話等不在排版裡的頁要去那裡藏）。`app.js?v=20261120m`。驗證 scratchpad `bkt/t11.js`（手機、電腦各 8 項）。
 - **2026-11-19 新版型、開場動畫、烤網**：版型選單多「月台」`eki`、「日落」`sunset`（`laySvg` 有對應的小圖），共 18 種；特殊頁多「開場動畫」（一格只放影片）、「對焦」改成「烤網」一格（最多 9 項）。都是讀 `book-media.json`，trip-tools 程式只加了小圖。`app.js?v=20261120n`。
+- **2026-11-19 版型・預覽**（使用者：「換版型後先預覽，並按自己喜歡的方式去放圖片影片」）：頁卡右上角的版型按鈕改開 `openLayPick` 新表單（`#sheet.lpw`，電腦兩欄、手機上下）：
+  上面是**書本的即時預覽**（iframe＝`/<repo>/index.html?embedpreview=1`，📱 手機 390×800／🖥 電腦 1280×760，`lpFit` 縮放），格子左上有編號；右邊（手機在下面）是這頁的照片影片一排（拖曳排順序、點一張問要不要拿掉）、
+  勾選「照我排的順序放進格子」（`fixed`：第 1 張放第 1 格，不勾就照直橫自動分）、版型卡片（推薦＋全部）。**每一個改動都先送預覽**（`lpSend`，postMessage `{type:'hkr-preview', k, doc:{layout, items, fixed}, pv}`），按「存檔」才寫進 `bookpages/{頁}`（`writeAll` 更新私人項目的頁＋`layout/items/fixed`；拿掉的私人項目 `media.page` 清空）。
+  私人照片影片在 trip-tools 這邊組成 Blob URL 傳給 iframe（`lpUrls`，同網域讀得到，最多留 40 個）。`sheetSwipe` 在 `.lst`／iframe 上不觸發下拉關閉。關掉表單時 `#dim` 的 MutationObserver 把 `LP` 清掉。`app.js?v=20261120o`。驗證 scratchpad `bkt/t12.js`（電腦、手機各 10 項）。
 
 ## 只有網站主人能建立新的一趟（2026-11-12）
 使用者打算把行程網站分享到旅遊版，資安盤點發現：任何人用 Google 登入後都能建立行程（`trips/{t}` 的 create 只檢查 owner 是自己），

@@ -19,7 +19,7 @@ catch (e) {   // 連不到 Firebase（沒網路、被擋）：不要停在「載
 }
 
 const $ = s => document.querySelector(s);
-const BOOKM = await import('./book.js?v=20261120n');
+const BOOKM = await import('./book.js?v=20261120o');
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const BASE = location.pathname.replace(/[^/]*$/, '');           // /trip-tools/
 const KNOWN = ['IzuAtami-trip', 'Oita_Fukoka_2026', '2025-osaka-kanazawa-miokokoen-nagano-tokyo', 'Osaka_Kyoto_Kobe', 'TaiwanTrip2026', '2027-taiwan'];
@@ -436,7 +436,7 @@ async function saveExp() {
 function bg(p) { Promise.resolve(p).catch(e => { toast(errMsg(e)); console.error(e); }); }
 (function sheetSwipe() {
   const sh = document.getElementById('sheet'); if (!sh) return; let y0 = null, dy = 0, on = false;
-  sh.addEventListener('touchstart', e => { if (sh.scrollTop > 0 || e.touches.length > 1) { y0 = null; return; } y0 = e.touches[0].clientY; dy = 0; on = false; }, { passive: true });
+  sh.addEventListener('touchstart', e => { if (sh.scrollTop > 0 || e.touches.length > 1 || e.target.closest('.lst, iframe, .lpv')) { y0 = null; return; } y0 = e.touches[0].clientY; dy = 0; on = false; }, { passive: true });
   sh.addEventListener('touchmove', e => { if (y0 == null) return; dy = e.touches[0].clientY - y0;
     if (!on && (dy < 6 || sh.scrollTop > 0)) { if (dy < 0) y0 = null; return; }
     on = true; e.preventDefault(); sh.classList.add('dragging'); sh.style.transform = `translateY(${Math.max(0, dy * .9)}px)`; }, { passive: false });
