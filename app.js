@@ -19,6 +19,7 @@ catch (e) {   // 連不到 Firebase（沒網路、被擋）：不要停在「載
 }
 
 const $ = s => document.querySelector(s);
+const BOOKM = await import('./book.js?v=20261120c');
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const BASE = location.pathname.replace(/[^/]*$/, '');           // /trip-tools/
 const KNOWN = ['IzuAtami-trip', 'Oita_Fukoka_2026', '2025-osaka-kanazawa-miokokoen-nagano-tokyo', 'Osaka_Kyoto_Kobe', 'TaiwanTrip2026', '2027-taiwan'];
@@ -114,13 +115,16 @@ function closeTrip() { if (cur) (cur.unsub || []).forEach(f => { try { f(); } ca
 function openTrip(id) {
   if (cur && cur.id === id) return;
   closeTrip();
-  cur = { id, trip: null, members: [], expenses: [], settles: [], restos: [], budget: [], photos: [], pages: [], unsub: [], err: null, loaded: false };
+  cur = { id, trip: null, members: [], expenses: [], settles: [], restos: [], budget: [], photos: [], pages: [], media: [], notes: [], unsub: [], err: null, loaded: false };
   const c = cur, fail = e => { if (c !== cur) return; c.err = e; render(); };
   c.unsub.push(api.watchTrip(id, t => { if (c !== cur) return; c.trip = t; c.loaded = true; if (t && me && t.owner === me.uid) migrateVis(c); famFix(c); render(); }, fail));
   for (const sub of ['members', 'expenses', 'settles', 'restos', 'budget', 'photos', 'pages'])
     c.unsub.push(api.watch(id, sub, rows => { if (c !== cur) return; c[sub] = rows; if (sub === 'budget') c.bErr = null; if (sub === 'photos') c.phErr = null; if (sub === 'pages') c.pgErr = null; if (sub === 'expenses' || sub === 'settles' || sub === 'members') famFix(c); render(); },
       sub === 'budget' ? e => { if (c !== cur) return; c.bErr = e; render(); } : sub === 'photos' ? e => { if (c !== cur) return; c.phErr = e; render(); } : sub === 'pages' ? e => { if (c !== cur) return; c.pgErr = e; render(); } : fail,   // 預算／照片讀不到（規則還沒更新）只影響那一頁
       sub === 'expenses' || sub === 'settles' ? ['vis', me.uid, 'array-contains'] : undefined));   // 記帳、轉帳只讀自己在 vis 裡的
+  // 書本版回憶錄的私人媒體與私人文字（只有 BOOK_TRIPS）；讀不到只影響「回憶錄」頁
+  if (BOOKM.isBookTrip(id)) for (const sub of ['media', 'notes'])
+    c.unsub.push(api.watch(id, sub, rows => { if (c !== cur) return; c[sub] = rows; c.mErr = null; if (route.page === 'book') render(); }, e => { if (c !== cur) return; c.mErr = e; if (route.page === 'book') render(); }));
 }
 // 分了家庭之後，把自己記的、跟別人分的帳與轉帳補上家人（規則只讓記帳的人改；只會加人，不會把人拿掉）
 function famFix(c) {
@@ -158,8 +162,9 @@ const testBar = () => EMBED ? '' : `<div class="test">測試版${MOCK ? '（模�
 function tabs(on) {
   if (EMBED && on === 'resto' || WIDE) return '';
   const T = EMBED ? [['budget', '📋', '花費'], ['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['mem', '👥', '成員']]
+    : BOOKM.isBookTrip(cur.id) ? [['budget', '📋', '預算'], ['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['resto', '🍽', '餐廳'], ['book', '📚', '回憶錄'], ['mem', '👥', '成員']]   // 書本版：照片與排版換成「回憶錄」
     : [['budget', '📋', '預算'], ['exp', '🧾', '記帳'], ['settle', '⚖️', '結算'], ['resto', '🍽', '餐廳'], ['photo', '🖼', '照片'], ['layout', '📖', '排版'], ['mem', '👥', '成員']];
-  return `<nav class="tabs">${T.map(([k, i, t]) => `<a href="#/t/${encodeURIComponent(cur.id)}/${k}" class="${k === on ? 'on' : ''}"><i>${i}</i>${t}</a>`).join('')}</nav>`;
+  return `<nav class="tabs" style="grid-template-columns:repeat(${T.length},1fr)">${T.map(([k, i, t]) => `<a href="#/t/${encodeURIComponent(cur.id)}/${k}" class="${k === on ? 'on' : ''}"><i>${i}</i>${t}</a>`).join('')}</nav>`;
 }
 function head(title) {
   const t = cur.trip;
@@ -180,7 +185,7 @@ function render() {
   if (!cur.loaded) return app().innerHTML = testBar() + '<div class="hero"><p>讀取中…</p></div>';
   if (!cur.trip) return app().innerHTML = testBar() + `<div class="hero"><h1 class="cap">找不到這趟</h1><p>可能還沒建立。</p>${EMBED ? '' : '<a class="btn s" href="#/">回我的行程</a>'}</div>`;
   const p = route.page;
-  app().innerHTML = testBar() + ({ budget: pBudget, exp: pExp, settle: pSettle, resto: pResto, photo: pPhoto, layout: pLayout, mem: pMem }[p] || pExp)() + tabs(p);
+  app().innerHTML = testBar() + ({ budget: pBudget, exp: pExp, settle: pSettle, resto: pResto, photo: pPhoto, layout: pLayout, book: BOOKM.pBook, mem: pMem }[p] || pExp)() + tabs(p);
   if (route.add && p === 'resto') { route.add = false; history.replaceState(null, '', location.pathname + location.search + '#/t/' + encodeURIComponent(cur.id) + '/resto'); RF = null; openResto(); }
 }
 
@@ -1133,3 +1138,6 @@ async function layoutAct(a, el) {
     for (const g of groups) await addPg(g.items.filter(m => m.kind === 'photo'), g.items.filter(m => m.kind === 'video'), (g.note || '隨手拍').split('\n')[0], '', '隨手拍');
     return toast(n ? '帶入了 ' + n + ' 頁，可以再改' : '這天沒有照片或影片'); }
 }
+
+// 書本版回憶錄的私人媒體（book.js）：把主程式的工具交給它
+BOOKM.bookInit({ api, cur: () => cur, me: () => me, esc, toast, render: () => { if (cur && route.page === 'book') render(); }, head, tabs, isOwner });

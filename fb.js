@@ -1,7 +1,7 @@
 // Firebase 實作：登入（Google）＋ Firestore。介面和 mock.js 一模一樣，app.js 只認這組函式。
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, onSnapshot, query, where, getDocs, Timestamp }
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, onSnapshot, query, where, getDocs, Timestamp, Bytes, writeBatch }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 // 這段設定本來就會公開在網頁上，不是密碼；資料靠 firestore.rules 保護
@@ -53,4 +53,12 @@ export default {
   set(id, sub, docId, data) { return setDoc(doc(db, 'trips', id, sub, docId), data); },
   update(id, sub, docId, patch) { return updateDoc(doc(db, 'trips', id, sub, docId), patch); },
   remove(id, sub, docId) { return deleteDoc(doc(db, 'trips', id, sub, docId)); },
+
+  // 回憶錄私人媒體（2026-11-19）：每個檔案切成 512 KiB 的二進位分塊，存在 trips/{id}/media/{mid}/chunks/{name}
+  // name：t＝縮圖、p＝影片封面、f0…＝本體。索引文件 media/{mid} 用上面的 set/update/remove。
+  putChunk(id, mid, name, u8) { return setDoc(doc(db, 'trips', id, 'media', mid, 'chunks', name), { d: Bytes.fromUint8Array(u8) }); },
+  async getChunk(id, mid, name) { const s = await getDoc(doc(db, 'trips', id, 'media', mid, 'chunks', name)); if (!s.exists()) throw new Error('missing chunk ' + mid + '/' + name); return s.data().d.toUint8Array(); },
+  async delChunks(id, mid, names) {
+    for (let i = 0; i < names.length; i += 400) { const b = writeBatch(db); names.slice(i, i + 400).forEach(n => b.delete(doc(db, 'trips', id, 'media', mid, 'chunks', n))); await b.commit(); }
+  },
 };

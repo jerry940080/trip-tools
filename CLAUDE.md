@@ -270,6 +270,19 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
 - 回憶錄網站那邊：有排頁的那天就照排的（每頁一張）、沒有的照原本自動產生；公開訪客用 Firestore REST 讀 pages，登入成員用 onSnapshot。做法記在 Oita_Fukoka_2026 的 CLAUDE.md。
 - 驗證：Playwright `?mock=1&as=哥哥` 建立行程 → 排版 Day 3 自動帶入 7 頁（金鱗湖雙拼、Tabimusubi 單張…）→ 新增雙拼（選 2 張才能存）→ ↑ 換順序 → 修改帶出 → 刪除 → 文字頁選「12:01 Tabimusubi → 日田站」；零錯誤。
 
+## 書本版回憶錄的私人媒體（2026-11-19，`book.js`）
+北陸回憶錄（`2025-osaka-kanazawa-miokokoen-nagano-tokyo`，書本版）的私人照片影片。做法的評估與決定記在那個 repo 的 CLAUDE.md「私人照片與影片」：**Firestore 二進位分塊＋原生播放器**，原檔不離開使用者電腦、Claude 看不到內容。
+- **只對 `BOOK_TRIPS` 裡的行程**：分頁列把「照片」「排版」（九州用的）換成「📚 回憶錄」（路由 `#/t/ID/book`），分頁數改成依 `T.length` 排。
+- **本機壓縮工具** `tools/media-pack/`（Windows，`壓縮回憶錄媒體.bat`＋`pack.ps1`，第一次下載免安裝 ffmpeg）：照片 1600 px WebP（全景 3600）＋縮圖、影片 720p H.264＋封面＋縮圖，拿掉 metadata；輸出 `輸出/manifest.json`。`.ps1` 要存 **UTF-8 有 BOM、CRLF**（Windows PowerShell 5.1 才讀得懂中文）。
+- **資料**：`trips/{id}/media/{mid}`＝`{kind, mime, w, h, dur, audio, num, src, taken, takenReliable, ts(排序用的時間，影片是估的), bytes, nf(本體分幾塊), tb, pb, page(書的頁 key，空＝還沒放), order, note, focus:{x,y}%|null, ready, by, at}`；
+  `media/{mid}/chunks/{t|p|f0…}`＝`{d: Bytes}`（512 KiB 一塊；t 縮圖、p 影片封面、f 本體）；私人文字 `trips/{id}/notes/{auto}`＝`{page, title, text, order, by, at}`。
+  `fb.js` 多 `putChunk／getChunk／delChunks`（writeBatch），`mock.js` 用 base64 模擬（localStorage 很小，測試加 `?bkchunk=2000` 把分塊切小）。
+- **規則**：`media`、`media/*/chunks`、`notes` 都是成員讀、主辦人寫（子集合要各自寫，上層規則不會套下去）。**使用者要把新的 `firestore.rules` 貼到 Firebase 主控台發布。**
+- **匯入**：選工具的「輸出」資料夾（`webkitdirectory`）→ 讀 `manifest.json`，資料夾裡有 `draft.json`（`{items:[{id, pg, ts}]}`，Claude 依時間、GPS、檔名編號排的對頁草稿）就當預設頁 →
+  比對已上傳的（同 bytes／tb 且 ready 就略過）→ 逐項上傳：換檔先標 `ready:false`，分塊寫完才寫索引 `ready:true`（書和清單只讀 ready 的）；重傳時保留使用者調過的頁、順序、說明、焦點。可以暫停。
+- **管理**：依書的頁序分組（頁清單讀 `/<repo>/book-pages.json`，書本 repo 用 Playwright 從 `SEQ`＋`titleOf` 產生），縮圖同時最多讀 6 張；點一張開彈窗：大圖／影片（分塊組回 Blob URL，記憶體只留 3 個）、換頁、同頁往前往後（整頁重新編號 order）、說明、點照片設「主角」焦點、刪除（連分塊一起刪）。
+- 驗證：IzuAtami… 本對話 scratchpad `bkt/t.js`（`?mock=1&bkchunk=2000`：讀資料夾與草稿、上傳 4 項 14 塊、縮圖、依草稿時間排序、焦點與說明、影片組回可播、往前移、換到特殊頁、重選資料夾全部略過、私人文字、刪除連分塊、手機無溢出、路人進不去）。**真正的 Firestore 與規則只能由使用者上線後測**。
+
 ## 只有網站主人能建立新的一趟（2026-11-12）
 使用者打算把行程網站分享到旅遊版，資安盤點發現：任何人用 Google 登入後都能建立行程（`trips/{t}` 的 create 只檢查 owner 是自己），
 陌生人可以亂建行程佔掉 Firebase 免費額度，或搶先用使用者其他行程的 repo 名稱（例如 `Oita_Fukoka_2026`）建立，讓使用者之後建不了。

@@ -36,7 +36,7 @@ export default {
   async removeUserTrip(uid, tripId) { if (S.users[uid]) delete S.users[uid].trips[tripId]; save(); },
 
   async getTrip(id) { if (!T(id)) return null; if (!isMember(id)) throw deny(); return { id, ...T(id).data }; },
-  async createTrip(id, data) { if (T(id)) throw deny(); S.trips[id] = { data, members: {}, expenses: {}, settles: {}, restos: {}, budget: {}, photos: {}, pages: {}, private: {} }; save(); },
+  async createTrip(id, data) { if (T(id)) throw deny(); S.trips[id] = { data, members: {}, expenses: {}, settles: {}, restos: {}, budget: {}, photos: {}, pages: {}, media: {}, notes: {}, chunks: {}, private: {} }; save(); },
   async updateTrip(id, patch) { if (!isMember(id)) throw deny(); if (!isOwner(id) && Object.keys(patch).some(k => k !== 'rate')) throw deny(); Object.assign(T(id).data, patch); save(); },
   watchTrip(id, cb, err) { const f = () => { if (!T(id)) return cb(null); isMember(id) ? cb({ id, ...T(id).data }) : err && err(deny()); }; subs.add(f); setTimeout(f, 0); return () => subs.delete(f); },
 
@@ -55,7 +55,7 @@ export default {
     subs.add(f); setTimeout(f, 0); return () => subs.delete(f);
   },
   async getAll(id, sub) { if (!isMember(id) || (PRIV(sub) && !OLD)) throw deny(); return JSON.parse(JSON.stringify(Object.entries(T(id)[sub] || {}).map(([k, v]) => ({ id: k, ...v })))); },
-  async add(id, sub, data) { if (!isMember(id) || data.by !== me.uid || (sub === 'restos' && data.status !== 'pending') || ((sub === 'budget' || sub === 'photos' || sub === 'pages') && !isOwner(id)) || (PRIV(sub) && !visOk(sub, data))) throw deny(); const k = 'd' + (++seq); (T(id)[sub] = T(id)[sub] || {})[k] = data; save(); return { id: k }; },
+  async add(id, sub, data) { if (!isMember(id) || data.by !== me.uid || (sub === 'restos' && data.status !== 'pending') || ((sub === 'budget' || sub === 'photos' || sub === 'pages' || sub === 'media' || sub === 'notes') && !isOwner(id)) || (PRIV(sub) && !visOk(sub, data))) throw deny(); const k = 'd' + (++seq); (T(id)[sub] = T(id)[sub] || {})[k] = data; save(); return { id: k }; },
   async set(id, sub, docId, data) {
     if (sub === 'members') {
       const inv = T(id) && T(id).private.invite;
@@ -64,21 +64,25 @@ export default {
     } else if (!isMember(id)) throw deny();
     else if (sub === 'expenses' && T(id)[sub][docId] && ((T(id)[sub][docId].by !== me.uid && !isOwner(id)) || (!OLD && !inVis(T(id)[sub][docId])))) throw deny();
     else if (sub === 'expenses' && (!visOk(sub, data) || (T(id)[sub][docId] && data.by !== T(id)[sub][docId].by))) throw deny();
-    else if ((sub === 'budget' || sub === 'pages') && !isOwner(id)) throw deny();
+    else if ((sub === 'budget' || sub === 'pages' || sub === 'media' || sub === 'notes') && !isOwner(id)) throw deny();
     T(id)[sub] = T(id)[sub] || {};
     T(id)[sub][docId] = data; save();
   },
   async update(id, sub, docId, patch) {
     if (!isMember(id)) throw deny();
-    if ((sub === 'restos' || sub === 'budget' || sub === 'photos' || sub === 'pages') && !isOwner(id)) throw deny();
+    if ((sub === 'restos' || sub === 'budget' || sub === 'photos' || sub === 'pages' || sub === 'media' || sub === 'notes') && !isOwner(id)) throw deny();
     if (PRIV(sub)) { const d = T(id)[sub][docId]; if (!d || (d.by !== me.uid && !isOwner(id)) || (!OLD && (!inVis(d) || !visOk(sub, { ...d, ...patch })))) throw deny(); }
     Object.assign(T(id)[sub][docId], patch); save();
   },
+  // 分塊：存 base64（localStorage 只有約 5 MB，模擬只拿小檔測）
+  async putChunk(id, mid, name, u8) { if (!isOwner(id)) throw deny(); let s = ''; u8.forEach(x => s += String.fromCharCode(x)); (T(id).chunks = T(id).chunks || {})[mid + '/' + name] = btoa(s); save(); },
+  async getChunk(id, mid, name) { if (!isMember(id)) throw deny(); const v = (T(id).chunks || {})[mid + '/' + name]; if (v == null) throw new Error('missing chunk ' + mid + '/' + name); const b = atob(v), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; },
+  async delChunks(id, mid, names) { if (!isOwner(id)) throw deny(); names.forEach(n => delete (T(id).chunks || {})[mid + '/' + n]); save(); },
   async remove(id, sub, docId) {
     if (!isMember(id)) throw deny();
     const d = T(id)[sub][docId] || {};
     if (PRIV(sub) && !OLD && !inVis(d)) throw deny();
-    const ok = (sub === 'settles' && !OLD && inVis(d)) || isOwner(id) || (sub === 'budget' || sub === 'photos' || sub === 'pages' ? false : sub === 'members' ? docId === me.uid : sub === 'restos' ? d.by === me.uid && d.status === 'pending' : d.by === me.uid);
+    const ok = (sub === 'settles' && !OLD && inVis(d)) || isOwner(id) || (sub === 'budget' || sub === 'photos' || sub === 'pages' || sub === 'media' || sub === 'notes' ? false : sub === 'members' ? docId === me.uid : sub === 'restos' ? d.by === me.uid && d.status === 'pending' : d.by === me.uid);
     if (!ok) throw deny();
     delete T(id)[sub][docId]; save();
   },

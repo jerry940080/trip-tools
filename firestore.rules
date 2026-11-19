@@ -102,6 +102,24 @@ service cloud.firestore {
         allow write: if isOwner(t);
       }
 
+      // 回憶錄私人媒體（2026-11-19）：壓縮好的照片、影片切成 512 KiB 的分塊。
+      // 索引（media/{m}）與每一塊（media/{m}/chunks/{c}）都要各自寫規則——上層的規則不會套到子集合。
+      // 成員讀得到（回憶錄網站登入後一塊一塊讀）、只有主辦人能上傳、改、刪
+      match /media/{m} {
+        allow read: if isMember(t);
+        allow write: if isOwner(t);
+        match /chunks/{c} {
+          allow read: if isMember(t);
+          allow write: if isOwner(t);
+        }
+      }
+
+      // 回憶錄的私人文字（例如不想公開的經驗）：成員讀得到、只有主辦人能寫
+      match /notes/{n} {
+        allow read: if isMember(t);
+        allow write: if isOwner(t);
+      }
+
       // 餐廳：成員推薦（先進待收錄），只有主辦人能收錄／婉拒
       // 已收錄的店不用登入也讀得到：行程網站的「餐廳」頁會列出來（只有店名、日期、推薦人名字、備註）
       match /restos/{r} {
