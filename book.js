@@ -68,7 +68,12 @@ export function pBook() {
   if (!BK.pages) return h + `<div class="empty">讀取中…</div>`;
   loadBM();
   if (!BK.mode) BK.mode = 'layout';
-  h += `<div class="seg"><button data-bk="mode" data-m="layout" class="${BK.mode === 'layout' ? 'on' : ''}">📐 排版</button><button data-bk="mode" data-m="files" class="${BK.mode === 'files' ? 'on' : ''}">🗂 檔案與匯入</button></div>`;
+  h += `<div class="seg"><button data-bk="mode" data-m="layout" class="${BK.mode === 'layout' ? 'on' : ''}">📐 排版</button><button data-bk="mode" data-m="pages" class="${BK.mode === 'pages' ? 'on' : ''}">📄 頁面</button><button data-bk="mode" data-m="files" class="${BK.mode === 'files' ? 'on' : ''}">🗂 檔案與匯入</button></div>`;
+  if (BK.mode === 'pages') {
+    if (BK.bmErr) return h + `<div class="empty">讀不到 book-media.json。</div>`;
+    if (!BK.bm) return h + `<div class="empty">讀取中…</div>`;
+    return h + pagesView(own) + `<div style="height:90px"></div>`;
+  }
   if (BK.mode === 'layout') {
     if (BK.bmErr) return h + `<div class="empty">讀不到 book-media.json（排版用的頁面清單）。</div>`;
     if (!BK.bm) return h + `<div class="empty">讀取中…</div>`;
@@ -223,6 +228,8 @@ const clean = o => { const r = {}; for (const [k, v] of Object.entries(o)) if (v
 
 /* ───────── 事件 ───────── */
 async function onChange(ev) {
+  if (ev.target.classList.contains('mtt')) { const k = ev.target.dataset.k, v = ev.target.value.trim(), T = { ...((bpDoc('_meta') || {}).titles || {}) }; if (v) T[k] = v; else delete T[k];
+    try { await mtSave({ titles: T }); X.toast(v ? '標題已改' : '已改回原本的標題'); } catch (err) { X.toast('存檔失敗：' + (err.code || err.message)); } return; }
   if (ev.target.classList.contains('tpn')) { const TP = tapesOf(), i = +ev.target.dataset.i; if (!TP[i]) return; TP[i].t = ev.target.value.trim(); try { await spSave('cass', { tapes: TP }); X.toast('卡帶名稱已存'); } catch (err) { X.toast('存檔失敗：' + (err.code || err.message)); } return; }
   if (ev.target.id === 'bkDir') { const fs = [...ev.target.files]; ev.target.value = ''; if (fs.length) await readFolder(fs); }
 }
@@ -240,6 +247,8 @@ async function onClick(ev) {
     if (a === 'tpool') return tileMove(el.dataset.id, '', 'pool');
     if (a === 'ttrash') { if (el.dataset.id.startsWith('pv:') && !confirm('確定刪除這項私人照片影片？刪掉後要重新上傳才會回來。')) return; return tileMove(el.dataset.id, '', 'trash'); }
     if (a === 'laypick') return openLayPick(el.dataset.k);
+    if (a === 'mthide') { const k = el.dataset.k, H = new Set((bpDoc('_meta') || {}).hidden || []); const on = !H.has(k); on ? H.add(k) : H.delete(k); await mtSave({ hidden: [...H] }); X.render(); return X.toast(on ? '這頁在書上隱藏了' : '這頁放回書裡了'); }
+    if (a === 'mtshowall') { await mtSave({ hidden: [] }); X.render(); return X.toast('全部頁都放回書裡了'); }
     if (a === 'cpadd') return cpForm({ after: el.dataset.after, guess: (BK.bm.pages || []).slice(-1)[0]?.k });
     if (a === 'lselmode') { BK.lsel = BK.lsel ? null : new Set(); return X.render(); }
     if (a === 'lselpool') { if (!BK.lsel) BK.lsel = new Set(); document.querySelectorAll('.lst[data-pool] .lt').forEach(t => BK.lsel.add(t.dataset.id)); return X.render(); }
@@ -372,8 +381,9 @@ function cpMerge() {
     if (/^t\d$/.test(a)) { seq.splice(i, 0, c.k); continue; } while (i + 1 < seq.length && chainOf(seq[i + 1], a)) i++; seq.splice(i + 1, 0, c.k); }
   const by = new Map(BK.pages0.map(p => [p.k, p])), bmk = new Map(BK.bmPages0.map(p => [p.k, p])), cm = new Map(L.map(c => [c.k, c]));
   const cp = c => ({ k: c.k, t: c.t || '（沒有標題）', d: +c.d || null, def: [], custom: 1 });
-  BK.pages = seq.map(k => by.get(k) || (cm.has(k) ? cp(cm.get(k)) : null)).filter(Boolean);
-  BK.bm.pages = seq.filter(k => bmk.has(k) || cm.has(k)).map(k => bmk.get(k) || cp(cm.get(k)));
+  const M = bpDoc('_meta') || {}, TT = M.titles || {}, HID = new Set(M.hidden || []), mt = p => ({ ...p, t0: p.t0 || p.t, t: TT[p.k] || p.t, hid: HID.has(p.k) });
+  BK.pages = seq.map(k => by.get(k) || (cm.has(k) ? cp(cm.get(k)) : null)).filter(Boolean).map(mt);
+  BK.bm.pages = seq.filter(k => bmk.has(k) || cm.has(k)).map(k => bmk.get(k) || cp(cm.get(k))).map(mt);
 }
 function cpForm(o) {   // o：{after} 新增、或 {k} 修改
   const c = o.k ? cpList().find(x => x.k === o.k) || {} : {}, after = o.k ? c.after : (o.after || ''), pg = pageOf(after);
@@ -438,6 +448,25 @@ async function batchMove(ids, toK) {
   await writeAll(wr.filter(o => !same(o)));
   return { n: add.length, skip };
 }
+/* 📄 頁面（2026-11-19）：每一頁改標題、在書裡隱藏／顯示。存 bookpages/_meta＝{titles:{頁:標題}, hidden:[頁…]}。
+   改標題＝換掉書上那頁的大標題（車票、每天一句話、題詞沒有大標題，只能隱藏）。 */
+async function mtSave(patch) { const d = bpDoc('_meta') || {}; await X.api.set(X.cur().id, 'bookpages', '_meta', { titles: d.titles || {}, hidden: d.hidden || [], ...patch, by: X.me().uid, at: Date.now() }); }
+function pagesView(own) {
+  cpMerge();
+  const M = bpDoc('_meta') || {}, TT = M.titles || {}, HID = new Set(M.hidden || []), repo = X.cur().id;
+  const L = BK.pages || [], nh = L.filter(p => HID.has(p.k)).length;
+  let h = `<div class="card small" style="line-height:1.7">改標題：直接打字，離開輸入框就存（清空＝用原本的標題）。按「👁 顯示中／🙈 已隱藏」切換這頁在不在書裡；隱藏的頁照片設定都還在，切回來就恢復。<br>共 ${L.length} 頁・隱藏 ${nh} 頁${own && nh ? `　<button class="small" data-bk="mtshowall">全部顯示</button>` : ''}</div>`;
+  let lastD = -1;
+  for (const p of L) {
+    if ((p.d || 0) !== lastD) { lastD = p.d || 0; h += `<div class="day"><span>${p.d ? 'Day ' + p.d : '前面'}</span></div>`; }
+    const hid = HID.has(p.k), can = p.ht !== false && !/^(q\d|t\d|endp)$/.test(p.k), orig = p.t0 || p.t;
+    h += `<div class="pgrow${hid ? ' off' : ''}"><div class="pgk">${p.custom ? '自己加的' : p.sp ? '特殊頁' : ''}</div>
+      ${can ? `<input class="inp mtt" data-k="${e(p.k)}" value="${e(TT[p.k] || '')}" placeholder="${e(orig)}" maxlength="40" ${own ? '' : 'disabled'}>` : `<div class="pgt">${e(orig)}<small>（沒有大標題，只能隱藏）</small></div>`}
+      <button class="small mth${hid ? ' on' : ''}" data-bk="mthide" data-k="${e(p.k)}" ${own ? '' : 'disabled'}>${hid ? '🙈 已隱藏' : '👁 顯示中'}</button>
+      <a class="lnk" href="/${repo}/index.html#pg=${e(p.k)}" target="_blank" rel="noopener" title="在書裡看">↗</a></div>`;
+  }
+  return h;
+}
 async function cpSaveAll(pages) { await X.api.set(X.cur().id, 'bookpages', '_custom', { pages, by: X.me().uid, at: Date.now() }); }
 const spOf = k => spList().find(x => x.k === k);
 const okIds = L => { const T = trashSet(); return L.filter(i => itInfo(i) && !T.has(i)); };
@@ -493,7 +522,7 @@ function layoutView() {
   for (const p of pages) {
     const ids = pageIds(p.k); ids.forEach(i => used.add(i)); const d = bpDoc(p.k), lay = (d && d.layout) || 'auto', l = LY[lay] || LY.auto;
     const v = ids.filter(i => (itInfo(i) || [])[1] === 'v').length;
-    h += `<div class="lpg${p.custom ? ' cpp' : ''}" data-k="${e(p.k)}"><div class="lph"><div><small>${p.custom ? '自己加的頁・' : ''}${p.d ? 'Day ' + p.d : ''}</small><b>${e(p.t)}${p.custom && own ? ` <button class="small" data-bk="cpedit" data-k="${e(p.k)}">✎ 修改</button>` : ''}</b><span>${ids.length - v} 張${v ? '・' + v + ' 支影片' : ''}${p.custom && !ids.length ? '・<em style="color:var(--bad);font-style:normal">還沒有照片，書上不會出現</em>' : ''}</span></div>
+    h += `<div class="lpg${p.custom ? ' cpp' : ''}" data-k="${e(p.k)}"><div class="lph"><div><small>${p.hid ? '<em style="color:var(--bad);font-style:normal">🙈 書上隱藏中・</em>' : ''}${p.custom ? '自己加的頁・' : ''}${p.d ? 'Day ' + p.d : ''}</small><b>${e(p.t)}${p.custom && own ? ` <button class="small" data-bk="cpedit" data-k="${e(p.k)}">✎ 修改</button>` : ''}</b><span>${ids.length - v} 張${v ? '・' + v + ' 支影片' : ''}${p.custom && !ids.length ? '・<em style="color:var(--bad);font-style:normal">還沒有照片，書上不會出現</em>' : ''}</span></div>
       <a class="lnk" href="/${repo}/index.html#pg=${e(p.k)}" target="_blank" rel="noopener">在書裡看 ↗</a>
       <button class="lay" data-bk="laypick" data-k="${e(p.k)}" ${own ? '' : 'disabled'}>${laySvg(l)}<span>${e(l.n)}</span></button></div>
       <div class="lst" data-k="${e(p.k)}">${ids.map(tileHTML).join('')}</div>${own ? `<button class="cpadd" data-bk="cpadd" data-after="${e(p.k)}">＋ 在這頁後面加一頁</button>` : ''}</div>`;
