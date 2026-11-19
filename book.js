@@ -223,6 +223,7 @@ const clean = o => { const r = {}; for (const [k, v] of Object.entries(o)) if (v
 
 /* ───────── 事件 ───────── */
 async function onChange(ev) {
+  if (ev.target.classList.contains('tpn')) { const TP = tapesOf(), i = +ev.target.dataset.i; if (!TP[i]) return; TP[i].t = ev.target.value.trim(); try { await spSave('cass', { tapes: TP }); X.toast('卡帶名稱已存'); } catch (err) { X.toast('存檔失敗：' + (err.code || err.message)); } return; }
   if (ev.target.id === 'bkDir') { const fs = [...ev.target.files]; ev.target.value = ''; if (fs.length) await readFolder(fs); }
 }
 async function onClick(ev) {
@@ -239,6 +240,10 @@ async function onClick(ev) {
     if (a === 'tpool') return tileMove(el.dataset.id, '', 'pool');
     if (a === 'ttrash') { if (el.dataset.id.startsWith('pv:') && !confirm('確定刪除這項私人照片影片？刪掉後要重新上傳才會回來。')) return; return tileMove(el.dataset.id, '', 'trash'); }
     if (a === 'laypick') return openLayPick(el.dataset.k);
+    if (a === 'sreset') { const k = el.dataset.k, d = bpDoc(k) || {}, sl = { ...(d.slots || {}) }; delete sl[el.dataset.s]; await spSave(k, { slots: sl }); X.render(); return X.toast('已還原成原本的內容'); }
+    if (a === 'tadd') { const TP = tapesOf(); TP.push({ t: '新的卡帶 ' + (TP.length + 1), items: [] }); await spSave('cass', { tapes: TP }); X.render(); return X.toast('加了一捲，把照片或影片拖進去'); }
+    if (a === 'tdel') { const TP = tapesOf(), i = +el.dataset.i; if (TP[i].items.length && !confirm(`刪除卡帶「${TP[i].t}」？裡面的 ${TP[i].items.length} 項會回到「不放進書裡」。`)) return; TP.splice(i, 1); await spSave('cass', { tapes: TP }); X.render(); return X.toast('已刪除這捲'); }
+    if (a === 'tup') { const TP = tapesOf(), i = +el.dataset.i; if (i < 1) return; [TP[i - 1], TP[i]] = [TP[i], TP[i - 1]]; await spSave('cass', { tapes: TP }); return X.render(); }
     if (a === 'laysel') { const k = el.dataset.k, ids = pageIds(k); await X.api.set(id, 'bookpages', k, { layout: el.dataset.l, items: ids, by: X.me().uid, at: Date.now() }); document.getElementById('dim').hidden = true; X.render(); return X.toast('版型已換'); }
     if (a === 'selmode') { BK.sel = BK.sel ? null : new Set(); return X.render(); }
     if (a === 'pick') { BK.sel.has(el.dataset.id) ? BK.sel.delete(el.dataset.id) : BK.sel.add(el.dataset.id); return X.render(); }
@@ -315,6 +320,20 @@ function itInfo(id) {   // [縮圖網址, 'i'|'v', 'h'|'v'|'p', 說明, 私人?]
   const m = mById(id.slice(3)); if (!m) return null; wantThumb(m); return [thumbURL(m) || '', m.kind === 'video' ? 'v' : 'i', isPano(m.w, m.h) ? 'p' : (m.h > m.w ? 'v' : 'h'), m.note || '', 1];
 }
 const trashSet = () => new Set(((bpDoc('_trash') || {}).items) || []);
+/* 特殊頁的格子（2026-11-19）：bookpages/{特殊頁}＝{slots:{格子 id:[項目…]}}，卡帶 bookpages/cass＝{tapes:[{t 名稱, items}]}。
+   沒設定的格子用 book-media.json 的 sp[].slots[].def（書上原本的內容）。 */
+const spList = () => BK.bm.sp || [];
+const spOf = k => spList().find(x => x.k === k);
+const okIds = L => { const T = trashSet(); return L.filter(i => itInfo(i) && !T.has(i)); };
+function slotIds(k, sid) { const d = bpDoc(k), sp = spOf(k), sl = sp && (sp.slots || []).find(z => z.id === sid); const set = d && d.slots && Array.isArray(d.slots[sid]); return okIds(set ? d.slots[sid] : (sl ? sl.def : [])); }
+const slotSet = (k, sid) => { const d = bpDoc(k); return !!(d && d.slots && Array.isArray(d.slots[sid])); };
+function tapesOf() { const d = bpDoc('cass'), sp = spOf('cass'); const src = d && Array.isArray(d.tapes) ? d.tapes : ((sp && sp.tapes) || []); return src.map(t => ({ t: t.t || '', items: okIds(t.items || []) })); }
+function spUsed() { const u = new Set(); for (const sp of spList()) { (sp.slots || []).forEach(z => slotIds(sp.k, z.id).forEach(i => u.add(i))); if (sp.tapes) tapesOf().forEach(t => t.items.forEach(i => u.add(i))); } return u; }
+const kindTxt = k => k === 'v' ? '只放影片' : k === 'i' ? '只放照片' : '照片或影片';
+async function spSave(k, patch) {   // 保留這頁原本的欄位，只換 slots 或 tapes
+  const d = bpDoc(k) || {}, o = {}; for (const [a, b] of Object.entries(d)) if (a !== 'id') o[a] = b;
+  await X.api.set(X.cur().id, 'bookpages', k, { ...o, ...patch, by: X.me().uid, at: Date.now() });
+}
 function pageIds(k) {
   const T = trashSet(), d = bpDoc(k), mine = sortM(media().filter(m => m.page === k)).map(m => 'pv:' + m.id), pg = (BK.bm.pages || []).find(p => p.k === k);
   let ids = d && d.items ? d.items.filter(id => id.startsWith('pub:') || mine.includes(id)) : (pg ? pg.def.map(n => 'pub:' + n) : []).concat(mine);
@@ -361,10 +380,26 @@ function layoutView() {
       <button class="lay" data-bk="laypick" data-k="${e(p.k)}" ${own ? '' : 'disabled'}>${laySvg(l)}<span>${e(l.n)}</span></button></div>
       <div class="lst" data-k="${e(p.k)}">${ids.map(tileHTML).join('')}</div></div>`;
   }
-  // 特殊頁上的私人項目（特殊頁不能選版型，只能決定哪些私人照片放在那頁）
-  const sp = (BK.pages || []).filter(p => !editK.has(p.k) && media().some(m => m.page === p.k));
-  if (sp.length) { h += `<div class="day"><span>特殊頁（只能放私人照片，版面固定）</span></div>`;
-    for (const p of sp) h += `<div class="lpg sp" data-k="${e(p.k)}"><div class="lph"><div><small>${p.d ? 'Day ' + p.d : ''}</small><b>${e(p.t)}</b></div></div><div class="lst" data-k="${e(p.k)}" data-sp="1">${sortM(media().filter(m => m.page === p.k)).map(m => tileHTML('pv:' + m.id)).join('')}</div></div>`; }
+  // 特殊頁：版面固定，每一格放哪些照片影片可以換（公開、私人都可以）
+  const SPU = spUsed(); SPU.forEach(i => used.add(i));
+  if (spList().length) h += `<div class="day"><span>特殊頁（版面固定，拖進每一格就換掉書上的內容）</span></div>`;
+  for (const sp of spList()) {
+    const pg = pageOf(sp.k), inSlot = new Set();
+    h += `<div class="lpg spg" data-k="${e(sp.k)}"><div class="lph"><div><small>${pg && pg.d ? 'Day ' + pg.d + '・' : ''}${e(sp.kind)}</small><b>${e(sp.t)}</b></div><a class="lnk" href="/${repo}/index.html#pg=${e(sp.k)}" target="_blank" rel="noopener">在書裡看 ↗</a></div>`;
+    for (const z of sp.slots || []) { const ids = slotIds(sp.k, z.id), set = slotSet(sp.k, z.id); ids.forEach(i => inSlot.add(i));
+      h += `<div class="slh"><b>${e(z.n)}</b><small>${kindTxt(z.k)}・最多 ${z.max} 項${ids.length > z.max ? `<em>（超過的 ${ids.length - z.max} 項不會出現）</em>` : ''}${set ? '' : '・目前是原本的內容'}</small>${set && own ? `<button class="small" data-bk="sreset" data-k="${e(sp.k)}" data-s="${e(z.id)}">還原</button>` : ''}</div>
+        <div class="lst" data-k="${e(sp.k)}" data-slot="${e(z.id)}" data-sk="${z.k}">${ids.map(tileHTML).join('')}</div>`; }
+    if (sp.tapes) { const TP = tapesOf(); TP.forEach(t => t.items.forEach(i => inSlot.add(i)));
+      TP.forEach((t, i) => { h += `<div class="slh tp"><input class="inp tpn" data-i="${i}" value="${e(t.t)}" placeholder="帶子的名字" ${own ? '' : 'disabled'}><small>${t.items.length ? (t.items.every(x => (itInfo(x) || [])[1] === 'v') ? t.items.length + ' 支影片（依序連播）' : t.items.length + ' 項（照片牆）') : '空的（書上不會出現）'}</small>${own ? `<button class="small" data-bk="tup" data-i="${i}" ${i ? '' : 'disabled'}>↑</button><button class="small" data-bk="tdel" data-i="${i}">刪除這捲</button>` : ''}</div>
+        <div class="lst" data-k="cass" data-tape="${i}">${t.items.map(tileHTML).join('')}</div>`; });
+      if (own) h += `<button class="btn ghost" data-bk="tadd" style="margin:6px 0 2px">＋ 新增一捲卡帶</button>`; }
+    const rest = sortM(media().filter(m => m.page === sp.k && !inSlot.has('pv:' + m.id))).map(m => 'pv:' + m.id);
+    if (rest.length) h += `<div class="slh"><b>放在這頁、還沒放進格子的私人項目</b><small>書上只會在「🔒 私人」按鈕裡</small></div><div class="lst" data-k="${e(sp.k)}" data-sp="1">${rest.map(tileHTML).join('')}</div>`;
+    h += `</div>`;
+  }
+  // 舊的：特殊頁清單裡沒有、但有私人項目指定到那頁
+  const spk = new Set(spList().map(x => x.k)), sp0 = (BK.pages || []).filter(p => !editK.has(p.k) && !spk.has(p.k) && media().some(m => m.page === p.k));
+  for (const p of sp0) h += `<div class="lpg sp" data-k="${e(p.k)}"><div class="lph"><div><small>${p.d ? 'Day ' + p.d : ''}</small><b>${e(p.t)}</b></div></div><div class="lst" data-k="${e(p.k)}" data-sp="1">${sortM(media().filter(m => m.page === p.k)).map(m => tileHTML('pv:' + m.id)).join('')}</div></div>`;
   // 不放進書裡：還沒指定頁的私人項目＋從頁上拿掉的公開照片
   const defAll = new Set(pages.flatMap(p => p.def)), T = trashSet();
   const pool = [...media().filter(m => !m.page || !(BK.pages || []).some(p => p.k === m.page)).map(m => 'pv:' + m.id), ...[...defAll].map(n => 'pub:' + n).filter(i => !used.has(i) && !T.has(i))];
@@ -378,7 +413,7 @@ async function initSort() {
   if (!SORT) SORT = (await import('./vendor/sortable.esm.js')).default;
   document.querySelectorAll('.lst').forEach(el => {
     if (el._s) return;
-    el._s = SORT.create(el, { group: { name: 'bk', put: (to, from, item) => !(to.el.dataset.sp && item.dataset.id.startsWith('pub:')) }, animation: 160, delay: 180, delayOnTouchOnly: true, forceFallback: true, fallbackTolerance: 4, scrollSensitivity: 90, scrollSpeed: 14, ghostClass: 'gh', chosenClass: 'ch',
+    el._s = SORT.create(el, { group: { name: 'bk', put: (to, from, item) => { const t = to.el.dataset, id = item.dataset.id; if (t.sp && id.startsWith('pub:')) return false; const x = itInfo(id) || []; if (t.sk === 'v' && x[1] !== 'v') return false; if (t.sk === 'i' && x[1] === 'v') return false; return true; } }, animation: 160, delay: 180, delayOnTouchOnly: true, forceFallback: true, fallbackTolerance: 4, scrollSensitivity: 90, scrollSpeed: 14, ghostClass: 'gh', chosenClass: 'ch',
       onStart: ev => { BK.drag = true; BK.dragFrom = stripOf(ev.from); document.body.classList.add('ldrag'); },
       onMove: ev => { const z = zoneAt(ev.originalEvent); document.querySelectorAll('#ldz .dz').forEach(d => d.classList.toggle('hot', d === z)); return z ? false : true; },
       onEnd: ev => {
@@ -400,10 +435,28 @@ async function writeStrip(o) {
     await X.api.set(id, 'bookpages', '_trash', { items: pub, by: me.uid, at: Date.now() });
     return;
   }
+  if (o.slot || o.tape != null) return writeAll([o]);   // 特殊頁的一格／一捲卡帶
   for (let i = 0; i < ids.length; i++) if (ids[i].startsWith('pv:')) { const m = mById(ids[i].slice(3)); if (m && (m.page !== k || (!o.add && m.order !== (i + 1) * 10))) await X.api.update(id, 'media', m.id, o.add ? { page: k } : { page: k, order: (i + 1) * 10 }); }
   if (k && !o.sp) { const d = bpDoc(k); await X.api.set(id, 'bookpages', k, { layout: (d && d.layout) || '', items: ids, by: me.uid, at: Date.now() }); }
 }
-const stripOf = el => ({ k: el.dataset.k, ids: [...el.children].map(t => t.dataset.id).filter(Boolean), sp: !!el.dataset.sp, trash: !!el.dataset.trash, add: !!el.dataset.add });
+/* 一次寫好幾排：同一個特殊頁（或卡帶）的幾格合成一次寫入，避免後寫的蓋掉先寫的 */
+async function writeAll(ops) {
+  const spOps = ops.filter(o => o.slot || o.tape != null), rest = ops.filter(o => !(o.slot || o.tape != null));
+  for (const o of rest) await writeStrip(o);
+  const byK = new Map(); spOps.forEach(o => { if (!byK.has(o.k)) byK.set(o.k, []); byK.get(o.k).push(o); });
+  const id = X.cur().id;
+  for (const [k, L] of byK) {
+    const d = bpDoc(k) || {}, slots = { ...(d.slots || {}) }, TP = tapesOf().map(t => ({ t: t.t, items: t.items.slice() }));
+    for (const o of L) {
+      let ids = o.ids; if (o.add) ids = [...(o.slot ? slotIds(k, o.slot) : (TP[+o.tape] || { items: [] }).items).filter(x => !o.ids.includes(x)), ...o.ids];
+      if (o.slot) { const z = ((spOf(k) || {}).slots || []).find(q => q.id === o.slot), prev = slotIds(k, o.slot), nw = ids.filter(x => !prev.includes(x)); if (z && z.max === 1 && ids.length > 1) ids = [nw[0] || ids[0]]; }   // 只能放一項的格子：新放進來的取代舊的
+      for (const i of ids) if (i.startsWith('pv:')) { const m = mById(i.slice(3)); if (m && m.page !== k) await X.api.update(id, 'media', m.id, { page: k }); }
+      if (o.slot) slots[o.slot] = ids; else if (TP[+o.tape]) TP[+o.tape].items = ids;
+    }
+    await spSave(k, L.some(o => o.slot) ? { slots } : { tapes: TP });
+  }
+}
+const stripOf = el => ({ k: el.dataset.k, ids: [...el.children].map(t => t.dataset.id).filter(Boolean), sp: !!el.dataset.sp, trash: !!el.dataset.trash, add: !!el.dataset.add, slot: el.dataset.slot || '', tape: el.dataset.tape != null ? el.dataset.tape : null });
 // 拖曳時畫面下方浮出的「不放進書裡／刪除」：用放開時的座標判斷有沒有落在上面
 function zoneAt(e) {
   if (!e) return null; const t = (e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]) || e, x = t.clientX, y = t.clientY; if (x == null) return null;
@@ -416,24 +469,28 @@ async function dropZone(id, z) {
 }
 async function saveDrag(from, to) {
   document.body.classList.remove('ldrag');
-  try { for (const el of [...new Set([from, to])]) await writeStrip(stripOf(el)); X.toast(to.dataset.trash ? '已放進刪除區' : to.dataset.pool ? '已從書裡拿掉' : '已存檔'); }
+  try { await writeAll([...new Set([from, to])].map(stripOf)); X.toast(to.dataset.trash ? '已放進刪除區' : to.dataset.pool ? '已從書裡拿掉' : '已存檔'); }
   catch (err) { X.toast(/permission/i.test(err.code || err.message || '') ? '沒有權限：Firebase 規則還沒有 bookpages，請貼上最新的 firestore.rules' : '存檔失敗：' + (err.code || err.message)); console.error(err); }
   BK.drag = false; BK.dirty = false; X.render();
 }
 // 一張縮圖目前在哪一排
 function whereIs(id) {
   if (trashSet().has(id)) return { k: '_trash', ids: [...trashSet()], trash: true };
+  for (const sp of spList()) { for (const z of sp.slots || []) { const ids = slotIds(sp.k, z.id); if (ids.includes(id)) return { k: sp.k, slot: z.id, ids, label: sp.t + '・' + z.n }; }
+    if (sp.tapes) { const TP = tapesOf(); for (let i = 0; i < TP.length; i++) if (TP[i].items.includes(id)) return { k: 'cass', tape: String(i), ids: TP[i].items, label: '卡帶「' + (TP[i].t || '未命名') + '」' }; } }
   for (const p of BK.bm.pages || []) { const ids = pageIds(p.k); if (ids.includes(id)) return { k: p.k, ids }; }
   if (id.startsWith('pv:')) { const m = mById(id.slice(3)); if (m && m.page && (BK.pages || []).some(p => p.k === m.page)) return { k: m.page, ids: sortM(media().filter(x => x.page === m.page)).map(x => 'pv:' + x.id), sp: true }; }
   return { k: '', ids: [id], pool: true };
 }
 // 點縮圖：小選單（往前／往後、移到別頁、不放進書裡、刪除、私人的編輯說明）
+const spOpts = (id, w) => { const x = itInfo(id) || []; let h = ''; for (const sp of spList()) { for (const z of sp.slots || []) { if ((z.k === 'v' && x[1] !== 'v') || (z.k === 'i' && x[1] === 'v')) continue; const v = sp.k + '|' + z.id; h += `<option value="${e(v)}"${w.slot === z.id && w.k === sp.k ? ' selected' : ''}>（特殊頁）${e(sp.t)}・${e(z.n)}</option>`; }
+  if (sp.tapes) tapesOf().forEach((t, i) => { h += `<option value="cass|#${i}"${w.tape === String(i) ? ' selected' : ''}>（卡帶）${e(t.t || '未命名')}</option>`; }); } return h; };
 function openTile(id) {
   const x = itInfo(id); if (!x) return; const w = whereIs(id), i = w.ids.indexOf(id), n = id.replace(/^(pub|pv):(IMG_)?/, '');
   const opts = (BK.bm.pages || []).map(p => `<option value="${e(p.k)}"${p.k === w.k ? ' selected' : ''}>${p.d ? 'Day ' + p.d + '・' : ''}${e(p.t)}</option>`).join('')
-    + (id.startsWith('pv:') ? (BK.pages || []).filter(p => !(BK.bm.pages || []).some(q => q.k === p.k)).map(p => `<option value="${e(p.k)}"${p.k === w.k ? ' selected' : ''}>（特殊頁）${p.d ? 'Day ' + p.d + '・' : ''}${e(p.t)}</option>`).join('') : '');
+    + spOpts(id, w);
   const sh = document.getElementById('sheet'), canMove = !w.pool && !w.trash;
-  sh.innerHTML = `<div class="grab"></div><div class="tmh"><img src="${x[0] || ''}" ${x[0] ? '' : `data-th="${e(id.slice(3))}"`} alt=""><div><b>${e(n)}</b><span>${x[4] ? '🔒 私人' : '公開'}・${x[1] === 'v' ? '影片' : '照片'}・${x[2] === 'v' ? '直' : x[2] === 'p' ? '全景' : '橫'}</span><small>${w.trash ? '在刪除區' : w.pool ? '沒有放進書裡' : '現在在：' + e(pageLabel(w.k)) + `（第 ${i + 1} / ${w.ids.length} 個）`}</small></div><button class="small" data-act="close">關閉</button></div>
+  sh.innerHTML = `<div class="grab"></div><div class="tmh"><img src="${x[0] || ''}" ${x[0] ? '' : `data-th="${e(id.slice(3))}"`} alt=""><div><b>${e(n)}</b><span>${x[4] ? '🔒 私人' : '公開'}・${x[1] === 'v' ? '影片' : '照片'}・${x[2] === 'v' ? '直' : x[2] === 'p' ? '全景' : '橫'}</span><small>${w.trash ? '在刪除區' : w.pool ? '沒有放進書裡' : '現在在：' + e(w.label || pageLabel(w.k)) + `（第 ${i + 1} / ${w.ids.length} 個）`}</small></div><button class="small" data-act="close">關閉</button></div>
     ${canMove ? `<div class="acts"><button data-bk="tmv" data-id="${e(id)}" data-d="-1" ${i <= 0 ? 'disabled' : ''}>← 往前</button><button data-bk="tmv" data-id="${e(id)}" data-d="1" ${i >= w.ids.length - 1 ? 'disabled' : ''}>往後 →</button></div>` : ''}
     <div class="lab">${canMove ? '移到別頁（排在那頁最後）' : '放回書裡'}</div><div class="tmto"><select class="inp" id="tmTo">${canMove ? '' : '<option value="">選一頁…</option>'}${opts}</select><button class="btn" data-bk="tto" data-id="${e(id)}">移過去</button></div>
     <div class="acts" style="margin-top:12px">${w.pool ? '' : `<button data-bk="tpool" data-id="${e(id)}">不放進書裡</button>`}${w.trash ? '' : `<button data-bk="ttrash" data-id="${e(id)}" style="color:var(--bad)">🗑 ${x[4] ? '刪除' : '刪除（等 Claude 刪檔）'}</button>`}${x[4] ? `<button data-bk="open" data-id="${e(id.slice(3))}">✎ 說明・焦點</button>` : ''}</div>`;
@@ -441,16 +498,18 @@ function openTile(id) {
 }
 async function tileMove(id, toK, how) {   // how：'to' 移到 toK 最後、'pool' 不放、'trash' 刪除、±1 往前後
   const w = whereIs(id), wr = [];
-  if (typeof how === 'number') { const L = w.ids.slice(), i = L.indexOf(id), j = i + how; if (j < 0 || j >= L.length) return; [L[i], L[j]] = [L[j], L[i]]; wr.push({ k: w.k, ids: L, sp: w.sp }); }
+  if (typeof how === 'number') { const L = w.ids.slice(), i = L.indexOf(id), j = i + how; if (j < 0 || j >= L.length) return; [L[i], L[j]] = [L[j], L[i]]; wr.push({ k: w.k, ids: L, sp: w.sp, slot: w.slot, tape: w.tape }); }
   else {
-    if (!w.pool) wr.push({ k: w.k, ids: w.ids.filter(x => x !== id), sp: w.sp, trash: w.trash });
+    if (!w.pool) wr.push({ k: w.k, ids: w.ids.filter(x => x !== id), sp: w.sp, trash: w.trash, slot: w.slot, tape: w.tape });
     if (how === 'trash') wr.push({ k: '_trash', ids: [id], trash: true, add: true });
     else if (how === 'pool') wr.push({ k: '', ids: [id], add: true });
+    else if (toK.includes('|')) { const [k2, s2] = toK.split('|'); if (s2.startsWith('#')) { const t = tapesOf()[+s2.slice(1)]; wr.push({ k: 'cass', tape: s2.slice(1), ids: [...(t ? t.items : []).filter(x => x !== id), id] }); }
+      else wr.push({ k: k2, slot: s2, ids: [...slotIds(k2, s2).filter(x => x !== id), id] }); }
     else { const sp = !(BK.bm.pages || []).some(p => p.k === toK); if (sp && id.startsWith('pub:')) return X.toast('特殊頁只能放私人照片影片'); const to = sp ? sortM(media().filter(m => m.page === toK)).map(m => 'pv:' + m.id) : pageIds(toK); wr.push({ k: toK, ids: [...to.filter(x => x !== id), id], sp }); }
   }
-  try { for (const o of wr) await writeStrip(o); } catch (err) { return X.toast('存檔失敗：' + (err.code || err.message)); }
+  try { await writeAll(wr); } catch (err) { return X.toast('存檔失敗：' + (err.code || err.message)); }
   X.render();
-  if (typeof how === 'number') openTile(id); else { document.getElementById('dim').hidden = true; X.toast(how === 'trash' ? '已放進刪除區' : how === 'pool' ? '已從書裡拿掉' : '已移到「' + pageLabel(toK) + '」'); }
+  if (typeof how === 'number') openTile(id); else { document.getElementById('dim').hidden = true; X.toast(how === 'trash' ? '已放進刪除區' : how === 'pool' ? '已從書裡拿掉' : '已移到「' + (toK.includes('|') ? (whereIs(id).label || '特殊頁') : pageLabel(toK)) + '」'); }
 }
 function openLayPick(k) {
   const LY = BK.bm.layouts || [], d = bpDoc(k), cur = (d && d.layout) || 'auto', ids = pageIds(k), rec = recommend(ids), pg = (BK.bm.pages || []).find(p => p.k === k);
