@@ -228,12 +228,16 @@ async function onChange(ev) {
 async function onClick(ev) {
   const img = ev.target.closest('#bkImg');
   if (img && ED && X.isOwner()) { const r = img.getBoundingClientRect(); ED.focus = { x: Math.round((ev.clientX - r.left) / r.width * 100), y: Math.round((ev.clientY - r.top) / r.height * 100) }; return drawFocus(); }
-  const lt = ev.target.closest('.lt.pv'); if (lt && !BK.drag) return openItem(lt.dataset.id.slice(3));   // 排版模式點私人縮圖：開編輯（說明、焦點…）
+  const lt = ev.target.closest('.lst .lt'); if (lt && !BK.drag && X.isOwner()) return openTile(lt.dataset.id);   // 排版模式點縮圖：小選單
   const el = ev.target.closest('[data-bk]'); if (!el) return;
   const a = el.dataset.bk, c = X.cur(), id = c && c.id;
   try {
     if (a === 'open') return openItem(el.dataset.id);
     if (a === 'mode') { BK.mode = el.dataset.m; return X.render(); }
+    if (a === 'tmv') return tileMove(el.dataset.id, '', +el.dataset.d);
+    if (a === 'tto') { const to = document.getElementById('tmTo').value; if (!to) return X.toast('先選一頁'); return tileMove(el.dataset.id, to, 'to'); }
+    if (a === 'tpool') return tileMove(el.dataset.id, '', 'pool');
+    if (a === 'ttrash') { if (el.dataset.id.startsWith('pv:') && !confirm('確定刪除這項私人照片影片？刪掉後要重新上傳才會回來。')) return; return tileMove(el.dataset.id, '', 'trash'); }
     if (a === 'laypick') return openLayPick(el.dataset.k);
     if (a === 'laysel') { const k = el.dataset.k, ids = pageIds(k); await X.api.set(id, 'bookpages', k, { layout: el.dataset.l, items: ids, by: X.me().uid, at: Date.now() }); document.getElementById('dim').hidden = true; X.render(); return X.toast('版型已換'); }
     if (a === 'selmode') { BK.sel = BK.sel ? null : new Set(); return X.render(); }
@@ -347,7 +351,7 @@ function recommend(ids) {   // 依這頁的組合推薦版型
 function layoutView() {
   const c = X.cur(), own = X.isOwner(), LY = LYMAP(), repo = c.id;
   const pages = BK.bm.pages || [], editK = new Set(pages.map(p => p.k));
-  let h = `<div class="card small" style="line-height:1.7">${own ? '拖曳縮圖可以<b>排順序</b>、<b>拖到別頁</b>，拖到最下面「不放進書裡」就會從書裡拿掉。每頁右上角選<b>版型</b>。改了馬上存，書重新整理就會看到（成員登入後即時更新）。手機上請<b>按住縮圖一下</b>再拖。' : '主辦人排的版面（只能看）。'}</div>`;
+  let h = `<div class="card small" style="line-height:1.7">${own ? '<b>點縮圖</b>：往前／往後、移到別頁、不放進書裡、刪除。<b>拖曳縮圖</b>：排順序、拖到別頁；拖的時候畫面下方會浮出「不放進書裡」「🗑 刪除」，放上去就好。每頁右上角選<b>版型</b>。改了馬上存。手機上請<b>按住縮圖一下</b>再拖。' : '主辦人排的版面（只能看）。'}</div>`;
   const used = new Set();
   for (const p of pages) {
     const ids = pageIds(p.k); ids.forEach(i => used.add(i)); const d = bpDoc(p.k), lay = (d && d.layout) || 'auto', l = LY[lay] || LY.auto;
@@ -366,6 +370,7 @@ function layoutView() {
   const pool = [...media().filter(m => !m.page || !(BK.pages || []).some(p => p.k === m.page)).map(m => 'pv:' + m.id), ...[...defAll].map(n => 'pub:' + n).filter(i => !used.has(i) && !T.has(i))];
   h += `<div class="lpg pool"><div class="lph"><div><b>不放進書裡</b><span>${pool.length} 項・拖回任何一頁就會出現</span></div></div><div class="lst" data-k="" data-pool="1">${pool.map(tileHTML).join('')}</div></div>`;
   if (own) h += `<div class="lpg trash"><div class="lph"><div><b>🗑 刪除</b><span>拖進來：<b>私人</b>的會問你一次然後直接刪掉；<b>公開</b>的先從書裡全部拿掉，等 Claude 把網站上的檔案刪除（拖回任何一頁就取消）。</span></div></div><div class="lst" data-k="_trash" data-trash="1">${[...T].map(tileHTML).join('')}</div></div>`;
+  if (own) h += `<div id="ldz"><div class="dz" data-z="pool"><span>拖到這裡：不放進書裡</span></div><div class="dz tr" data-z="trash"><span>🗑 拖到這裡：刪除</span></div></div>`;
   if (own) setTimeout(initSort, 0);
   return h;
 }
@@ -373,29 +378,79 @@ async function initSort() {
   if (!SORT) SORT = (await import('./vendor/sortable.esm.js')).default;
   document.querySelectorAll('.lst').forEach(el => {
     if (el._s) return;
-    el._s = SORT.create(el, { group: { name: 'bk', put: (to, from, item) => !(to.el.dataset.sp && item.dataset.id.startsWith('pub:')) }, animation: 160, delay: 180, delayOnTouchOnly: true, ghostClass: 'gh', chosenClass: 'ch',
-      onStart: () => { BK.drag = true; }, onEnd: ev => saveDrag(ev.from, ev.to) });
+    el._s = SORT.create(el, { group: { name: 'bk', put: (to, from, item) => !(to.el.dataset.sp && item.dataset.id.startsWith('pub:')) }, animation: 160, delay: 180, delayOnTouchOnly: true, forceFallback: true, fallbackTolerance: 4, scrollSensitivity: 90, scrollSpeed: 14, ghostClass: 'gh', chosenClass: 'ch',
+      onStart: ev => { BK.drag = true; BK.dragFrom = stripOf(ev.from); document.body.classList.add('ldrag'); },
+      onMove: ev => { const z = zoneAt(ev.originalEvent); document.querySelectorAll('#ldz .dz').forEach(d => d.classList.toggle('hot', d === z)); return z ? false : true; },
+      onEnd: ev => {
+        const z = zoneAt(ev.originalEvent), id = ev.item.dataset.id;
+        if (z) return dropZone(id, z.dataset.z);   // 放在浮動的投放區上：照拖之前的資料處理，畫面重畫
+        if (ev.from === ev.to && ev.oldIndex === ev.newIndex) { BK.drag = false; document.body.classList.remove('ldrag'); return; }
+        saveDrag(ev.from, ev.to); } });
   });
 }
-async function saveDrag(from, to) {
-  const id = X.cur().id, me = X.me(), strips = [...new Set([from, to])];
-  try {
-    for (const el of strips) {
-      const k = el.dataset.k, ids = [...el.children].map(t => t.dataset.id);
-      if (el.dataset.trash) {
-        const pv = ids.filter(i => i.startsWith('pv:')), pub = ids.filter(i => i.startsWith('pub:'));
-        if (pv.length && confirm(`確定刪除 ${pv.length} 項私人照片影片？刪掉後要重新上傳才會回來。`)) {
-          for (const i of pv) { const m = mById(i.slice(3)); if (!m) continue; await X.api.update(id, 'media', m.id, { ready: false }); await X.api.delChunks(id, m.id, allNames(m)); await X.api.remove(id, 'media', m.id); }
-        }
-        await X.api.set(id, 'bookpages', '_trash', { items: pub, by: me.uid, at: Date.now() });
-        continue;
-      }
-      for (let i = 0; i < ids.length; i++) if (ids[i].startsWith('pv:')) { const m = mById(ids[i].slice(3)); if (m && (m.page !== k || m.order !== (i + 1) * 10)) await X.api.update(id, 'media', m.id, { page: k, order: (i + 1) * 10 }); }
-      if (k && !el.dataset.sp) { const d = bpDoc(k); await X.api.set(id, 'bookpages', k, { layout: (d && d.layout) || '', items: ids, by: me.uid, at: Date.now() }); }
+// 把一排（某頁／不放進書裡／刪除）的新內容寫回去。add＝浮動的投放區：只帶新放進來的項目，要跟原本的合併
+async function writeStrip(o) {
+  const id = X.cur().id, me = X.me(), { k, ids } = o;
+  if (o.trash) {
+    const pv = ids.filter(i => i.startsWith('pv:')), pubNew = ids.filter(i => i.startsWith('pub:'));
+    if (pv.length && confirm(`確定刪除 ${pv.length} 項私人照片影片？刪掉後要重新上傳才會回來。`)) {
+      for (const i of pv) { const m = mById(i.slice(3)); if (!m) continue; await X.api.update(id, 'media', m.id, { ready: false }); await X.api.delChunks(id, m.id, allNames(m)); await X.api.remove(id, 'media', m.id); }
     }
-    X.toast('已存檔');
-  } catch (err) { X.toast(/permission/i.test(err.code || err.message || '') ? '沒有權限：Firebase 規則還沒有 bookpages，請貼上最新的 firestore.rules' : '存檔失敗：' + (err.code || err.message)); console.error(err); }
-  BK.drag = false; if (BK.dirty) { BK.dirty = false; } X.render();
+    const pub = o.add ? [...new Set([...trashSet(), ...pubNew])] : pubNew;
+    await X.api.set(id, 'bookpages', '_trash', { items: pub, by: me.uid, at: Date.now() });
+    return;
+  }
+  for (let i = 0; i < ids.length; i++) if (ids[i].startsWith('pv:')) { const m = mById(ids[i].slice(3)); if (m && (m.page !== k || (!o.add && m.order !== (i + 1) * 10))) await X.api.update(id, 'media', m.id, o.add ? { page: k } : { page: k, order: (i + 1) * 10 }); }
+  if (k && !o.sp) { const d = bpDoc(k); await X.api.set(id, 'bookpages', k, { layout: (d && d.layout) || '', items: ids, by: me.uid, at: Date.now() }); }
+}
+const stripOf = el => ({ k: el.dataset.k, ids: [...el.children].map(t => t.dataset.id).filter(Boolean), sp: !!el.dataset.sp, trash: !!el.dataset.trash, add: !!el.dataset.add });
+// 拖曳時畫面下方浮出的「不放進書裡／刪除」：用放開時的座標判斷有沒有落在上面
+function zoneAt(e) {
+  if (!e) return null; const t = (e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]) || e, x = t.clientX, y = t.clientY; if (x == null) return null;
+  return [...document.querySelectorAll('#ldz .dz')].find(d => { const r = d.getBoundingClientRect(); return r.width && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; }) || null;
+}
+async function dropZone(id, z) {
+  document.body.classList.remove('ldrag'); BK.drag = false;
+  if (z === 'trash' && id.startsWith('pv:') && !confirm('確定刪除這項私人照片影片？刪掉後要重新上傳才會回來。')) return X.render();
+  await tileMove(id, '', z === 'trash' ? 'trash' : 'pool');
+}
+async function saveDrag(from, to) {
+  document.body.classList.remove('ldrag');
+  try { for (const el of [...new Set([from, to])]) await writeStrip(stripOf(el)); X.toast(to.dataset.trash ? '已放進刪除區' : to.dataset.pool ? '已從書裡拿掉' : '已存檔'); }
+  catch (err) { X.toast(/permission/i.test(err.code || err.message || '') ? '沒有權限：Firebase 規則還沒有 bookpages，請貼上最新的 firestore.rules' : '存檔失敗：' + (err.code || err.message)); console.error(err); }
+  BK.drag = false; BK.dirty = false; X.render();
+}
+// 一張縮圖目前在哪一排
+function whereIs(id) {
+  if (trashSet().has(id)) return { k: '_trash', ids: [...trashSet()], trash: true };
+  for (const p of BK.bm.pages || []) { const ids = pageIds(p.k); if (ids.includes(id)) return { k: p.k, ids }; }
+  if (id.startsWith('pv:')) { const m = mById(id.slice(3)); if (m && m.page && (BK.pages || []).some(p => p.k === m.page)) return { k: m.page, ids: sortM(media().filter(x => x.page === m.page)).map(x => 'pv:' + x.id), sp: true }; }
+  return { k: '', ids: [id], pool: true };
+}
+// 點縮圖：小選單（往前／往後、移到別頁、不放進書裡、刪除、私人的編輯說明）
+function openTile(id) {
+  const x = itInfo(id); if (!x) return; const w = whereIs(id), i = w.ids.indexOf(id), n = id.replace(/^(pub|pv):(IMG_)?/, '');
+  const opts = (BK.bm.pages || []).map(p => `<option value="${e(p.k)}"${p.k === w.k ? ' selected' : ''}>${p.d ? 'Day ' + p.d + '・' : ''}${e(p.t)}</option>`).join('')
+    + (id.startsWith('pv:') ? (BK.pages || []).filter(p => !(BK.bm.pages || []).some(q => q.k === p.k)).map(p => `<option value="${e(p.k)}"${p.k === w.k ? ' selected' : ''}>（特殊頁）${p.d ? 'Day ' + p.d + '・' : ''}${e(p.t)}</option>`).join('') : '');
+  const sh = document.getElementById('sheet'), canMove = !w.pool && !w.trash;
+  sh.innerHTML = `<div class="grab"></div><div class="tmh"><img src="${x[0] || ''}" ${x[0] ? '' : `data-th="${e(id.slice(3))}"`} alt=""><div><b>${e(n)}</b><span>${x[4] ? '🔒 私人' : '公開'}・${x[1] === 'v' ? '影片' : '照片'}・${x[2] === 'v' ? '直' : x[2] === 'p' ? '全景' : '橫'}</span><small>${w.trash ? '在刪除區' : w.pool ? '沒有放進書裡' : '現在在：' + e(pageLabel(w.k)) + `（第 ${i + 1} / ${w.ids.length} 個）`}</small></div><button class="small" data-act="close">關閉</button></div>
+    ${canMove ? `<div class="acts"><button data-bk="tmv" data-id="${e(id)}" data-d="-1" ${i <= 0 ? 'disabled' : ''}>← 往前</button><button data-bk="tmv" data-id="${e(id)}" data-d="1" ${i >= w.ids.length - 1 ? 'disabled' : ''}>往後 →</button></div>` : ''}
+    <div class="lab">${canMove ? '移到別頁（排在那頁最後）' : '放回書裡'}</div><div class="tmto"><select class="inp" id="tmTo">${canMove ? '' : '<option value="">選一頁…</option>'}${opts}</select><button class="btn" data-bk="tto" data-id="${e(id)}">移過去</button></div>
+    <div class="acts" style="margin-top:12px">${w.pool ? '' : `<button data-bk="tpool" data-id="${e(id)}">不放進書裡</button>`}${w.trash ? '' : `<button data-bk="ttrash" data-id="${e(id)}" style="color:var(--bad)">🗑 ${x[4] ? '刪除' : '刪除（等 Claude 刪檔）'}</button>`}${x[4] ? `<button data-bk="open" data-id="${e(id.slice(3))}">✎ 說明・焦點</button>` : ''}</div>`;
+  document.getElementById('dim').hidden = false;
+}
+async function tileMove(id, toK, how) {   // how：'to' 移到 toK 最後、'pool' 不放、'trash' 刪除、±1 往前後
+  const w = whereIs(id), wr = [];
+  if (typeof how === 'number') { const L = w.ids.slice(), i = L.indexOf(id), j = i + how; if (j < 0 || j >= L.length) return; [L[i], L[j]] = [L[j], L[i]]; wr.push({ k: w.k, ids: L, sp: w.sp }); }
+  else {
+    if (!w.pool) wr.push({ k: w.k, ids: w.ids.filter(x => x !== id), sp: w.sp, trash: w.trash });
+    if (how === 'trash') wr.push({ k: '_trash', ids: [id], trash: true, add: true });
+    else if (how === 'pool') wr.push({ k: '', ids: [id], add: true });
+    else { const sp = !(BK.bm.pages || []).some(p => p.k === toK); if (sp && id.startsWith('pub:')) return X.toast('特殊頁只能放私人照片影片'); const to = sp ? sortM(media().filter(m => m.page === toK)).map(m => 'pv:' + m.id) : pageIds(toK); wr.push({ k: toK, ids: [...to.filter(x => x !== id), id], sp }); }
+  }
+  try { for (const o of wr) await writeStrip(o); } catch (err) { return X.toast('存檔失敗：' + (err.code || err.message)); }
+  X.render();
+  if (typeof how === 'number') openTile(id); else { document.getElementById('dim').hidden = true; X.toast(how === 'trash' ? '已放進刪除區' : how === 'pool' ? '已從書裡拿掉' : '已移到「' + pageLabel(toK) + '」'); }
 }
 function openLayPick(k) {
   const LY = BK.bm.layouts || [], d = bpDoc(k), cur = (d && d.layout) || 'auto', ids = pageIds(k), rec = recommend(ids), pg = (BK.bm.pages || []).find(p => p.k === k);

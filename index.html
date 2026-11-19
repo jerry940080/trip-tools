@@ -275,12 +275,17 @@ html.wide .lpick{grid-template-columns:repeat(5,1fr)}
 .lyg{display:grid;grid-template-columns:1fr;gap:6px}@media(min-width:560px){.lyg{grid-template-columns:1fr 1fr}}
 .lyc{display:flex;gap:10px;align-items:flex-start;text-align:left;background:#fff;border:2px solid var(--line);border-radius:14px;padding:8px}.lyc.on{border-color:var(--acc);background:#fdf1e6}.lyc svg{flex:none;width:44px;height:58px}
 .lyc b{display:block;font-size:14px}.lyc em{font-style:normal;font-size:11px;background:var(--acc);color:#fff;border-radius:6px;padding:0 5px;margin-left:6px}.lyc span{display:block;font-size:12px;color:var(--ink)}.lyc small{display:block;font-size:11px;color:var(--mute)}
+#ldz{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));width:min(496px,calc(100% - 24px));z-index:8;display:none;gap:8px}
+body.ldrag #ldz{display:flex}#ldz .dz{flex:1;min-height:70px;display:flex;align-items:center;justify-content:center;border-radius:14px;background:#fffaf2;border:2px dashed var(--line);box-shadow:0 8px 24px #0003;font-size:13px;color:var(--mute)}
+#ldz .dz.tr{background:#fbe5df;border-color:#e3a99c;color:var(--bad)}#ldz .dz.hot{transform:scale(1.04);border-style:solid;border-color:var(--acc)}#ldz .dz.tr.hot{background:#f4c7bb;border-color:var(--bad)}
+.tmh{display:flex;gap:10px;align-items:center;margin-bottom:10px}.tmh img{width:72px;height:72px;object-fit:cover;border-radius:10px;background:#ddd}.tmh div{flex:1}.tmh b{display:block}.tmh span,.tmh small{display:block;font-size:12px;color:var(--mute)}
+.tmto{display:flex;gap:8px}.tmto .inp{flex:1;margin:0}.tmto .btn{width:auto;margin:0;padding:10px 14px}
 </style>
 </head>
 <body>
 <div id="app"><div class="hero"><p>載入中…</p></div></div>
 <div class="dim" id="dim" hidden><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
-<script type="module" src="app.js?v=20261120f"></script>
+<script type="module" src="app.js?v=20261120g"></script>
 </body>
 </html>
