@@ -250,7 +250,8 @@ async function onClick(ev) {
     if (a === 'copylist') {
       const by = new Map(); media().forEach(m => { const k = pageOf(m.page) ? m.page : ''; if (!by.has(k)) by.set(k, []); by.get(k).push(m); });
       const ks = [...BK.pages.map(p => p.k).filter(k => by.has(k)), ...(by.has('') ? [''] : [])];
-      const txt = '北陸回憶錄・私人照片影片清單（' + media().length + ' 項）\n' + ks.map(k => `\n## ${pageLabel(k)}${k ? `（${k}）` : ''}\n` + sortM(by.get(k)).map((m, i) => `${i + 1}. ${m.id}　${m.kind === 'video' ? '影片 ' + fmtDur(m.dur) : '照片'}・${m.h > m.w ? '直' : (m.w > m.h * 2.2 ? '全景' : '橫')}${m.focus ? '・有焦點' : ''}${m.note ? '　「' + m.note + '」' : ''}`).join('\n')).join('\n');
+      const tr = [...trashSet()];
+      const txt = (tr.length ? `等 Claude 從網站刪除的公開檔案（${tr.length}）：${tr.join(' ')}\n\n` : '') + '北陸回憶錄・私人照片影片清單（' + media().length + ' 項）\n' + ks.map(k => `\n## ${pageLabel(k)}${k ? `（${k}）` : ''}\n` + sortM(by.get(k)).map((m, i) => `${i + 1}. ${m.id}　${m.kind === 'video' ? '影片 ' + fmtDur(m.dur) : '照片'}・${m.h > m.w ? '直' : (m.w > m.h * 2.2 ? '全景' : '橫')}${m.focus ? '・有焦點' : ''}${m.note ? '　「' + m.note + '」' : ''}`).join('\n')).join('\n');
       try { await navigator.clipboard.writeText(txt); return X.toast('清單已複製，貼到對話裡就可以'); }
       catch (err) { const sh = document.getElementById('sheet'); sh.innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between"><b>複製清單</b><button class="small" data-act="close">關閉</button></div><div class="small">自動複製失敗，請全選下面的文字自己複製。</div><textarea class="inp" rows="16" readonly>${e(txt)}</textarea>`; document.getElementById('dim').hidden = false; return; }
     }
@@ -309,11 +310,12 @@ function itInfo(id) {   // [縮圖網址, 'i'|'v', 'h'|'v'|'p', 說明, 私人?]
   if (id.startsWith('pub:')) { const n = id.slice(4), x = (BK.bm.items || {})[n]; if (!x) return null; return [`/${repo}/thumb/IMG_${n}.webp`, x[1], x[2], x[0], 0]; }
   const m = mById(id.slice(3)); if (!m) return null; wantThumb(m); return [thumbURL(m) || '', m.kind === 'video' ? 'v' : 'i', isPano(m.w, m.h) ? 'p' : (m.h > m.w ? 'v' : 'h'), m.note || '', 1];
 }
+const trashSet = () => new Set(((bpDoc('_trash') || {}).items) || []);
 function pageIds(k) {
-  const d = bpDoc(k), mine = sortM(media().filter(m => m.page === k)).map(m => 'pv:' + m.id), pg = (BK.bm.pages || []).find(p => p.k === k);
+  const T = trashSet(), d = bpDoc(k), mine = sortM(media().filter(m => m.page === k)).map(m => 'pv:' + m.id), pg = (BK.bm.pages || []).find(p => p.k === k);
   let ids = d && d.items ? d.items.filter(id => id.startsWith('pub:') || mine.includes(id)) : (pg ? pg.def.map(n => 'pub:' + n) : []).concat(mine);
   mine.forEach(id => { if (!ids.includes(id)) ids.push(id); });
-  return ids.filter(id => itInfo(id));
+  return ids.filter(id => itInfo(id) && !T.has(id));
 }
 function tileHTML(id) { const x = itInfo(id); if (!x) return ''; const n = id.replace(/^(pub|pv):(IMG_)?/, '');
   return `<div class="lt${x[4] ? ' pv' : ''}" data-id="${e(id)}" title="${e(x[3] || n)}"><img ${x[0] ? `src="${x[0]}"` : `data-th="${e(id.slice(3))}"`} loading="lazy" alt="" draggable="false"><i>${x[4] ? '🔒' : ''}${x[1] === 'v' ? '▶' : ''}${x[2] === 'v' ? '直' : x[2] === 'p' ? '全景' : ''}</i><b>${e(n)}</b></div>`; }
@@ -360,9 +362,10 @@ function layoutView() {
   if (sp.length) { h += `<div class="day"><span>特殊頁（只能放私人照片，版面固定）</span></div>`;
     for (const p of sp) h += `<div class="lpg sp" data-k="${e(p.k)}"><div class="lph"><div><small>${p.d ? 'Day ' + p.d : ''}</small><b>${e(p.t)}</b></div></div><div class="lst" data-k="${e(p.k)}" data-sp="1">${sortM(media().filter(m => m.page === p.k)).map(m => tileHTML('pv:' + m.id)).join('')}</div></div>`; }
   // 不放進書裡：還沒指定頁的私人項目＋從頁上拿掉的公開照片
-  const defAll = new Set(pages.flatMap(p => p.def));
-  const pool = [...media().filter(m => !m.page || !(BK.pages || []).some(p => p.k === m.page)).map(m => 'pv:' + m.id), ...[...defAll].map(n => 'pub:' + n).filter(i => !used.has(i))];
+  const defAll = new Set(pages.flatMap(p => p.def)), T = trashSet();
+  const pool = [...media().filter(m => !m.page || !(BK.pages || []).some(p => p.k === m.page)).map(m => 'pv:' + m.id), ...[...defAll].map(n => 'pub:' + n).filter(i => !used.has(i) && !T.has(i))];
   h += `<div class="lpg pool"><div class="lph"><div><b>不放進書裡</b><span>${pool.length} 項・拖回任何一頁就會出現</span></div></div><div class="lst" data-k="" data-pool="1">${pool.map(tileHTML).join('')}</div></div>`;
+  if (own) h += `<div class="lpg trash"><div class="lph"><div><b>🗑 刪除</b><span>拖進來：<b>私人</b>的會問你一次然後直接刪掉；<b>公開</b>的先從書裡全部拿掉，等 Claude 把網站上的檔案刪除（拖回任何一頁就取消）。</span></div></div><div class="lst" data-k="_trash" data-trash="1">${[...T].map(tileHTML).join('')}</div></div>`;
   if (own) setTimeout(initSort, 0);
   return h;
 }
@@ -379,6 +382,14 @@ async function saveDrag(from, to) {
   try {
     for (const el of strips) {
       const k = el.dataset.k, ids = [...el.children].map(t => t.dataset.id);
+      if (el.dataset.trash) {
+        const pv = ids.filter(i => i.startsWith('pv:')), pub = ids.filter(i => i.startsWith('pub:'));
+        if (pv.length && confirm(`確定刪除 ${pv.length} 項私人照片影片？刪掉後要重新上傳才會回來。`)) {
+          for (const i of pv) { const m = mById(i.slice(3)); if (!m) continue; await X.api.update(id, 'media', m.id, { ready: false }); await X.api.delChunks(id, m.id, allNames(m)); await X.api.remove(id, 'media', m.id); }
+        }
+        await X.api.set(id, 'bookpages', '_trash', { items: pub, by: me.uid, at: Date.now() });
+        continue;
+      }
       for (let i = 0; i < ids.length; i++) if (ids[i].startsWith('pv:')) { const m = mById(ids[i].slice(3)); if (m && (m.page !== k || m.order !== (i + 1) * 10)) await X.api.update(id, 'media', m.id, { page: k, order: (i + 1) * 10 }); }
       if (k && !el.dataset.sp) { const d = bpDoc(k); await X.api.set(id, 'bookpages', k, { layout: (d && d.layout) || '', items: ids, by: me.uid, at: Date.now() }); }
     }

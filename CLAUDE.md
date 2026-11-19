@@ -291,6 +291,8 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
     **SortableJS 拖曳**（`vendor/sortable.esm.js` 1.15.2 MIT，`npm pack` 下載，CDN 被擋；手機按住 180ms 才拖）排順序、跨頁移動、拖到最下面「不放進書裡」；特殊頁（電車、暖簾…）另列，只能放私人項目、不能選版型。點私人縮圖開原本的編輯彈窗。
   - 存檔：`trips/{id}/bookpages/{頁}`＝`{layout, items:['pub:0508','pv:<id>',…], by, at}`；私人項目同時更新 `media.page／order`（「在哪頁」以 media.page 為準，items 只管順序）。拖曳中收到 onSnapshot 不重畫（`bkRender`），放開後才重畫。
   - 版型：頁卡右上角按鈕開彈窗，16 種卡片（小示意圖，紅格＝影片優先）＋依這頁組合（直／橫影片、直／橫／全景照片的數量）標「推薦」（`recommend`）。「在書裡看 ↗」開 `/<repo>/index.html#pg=頁`。
+  - **🗑 刪除區**（同日，使用者：公開的照片影片也要能刪）：排版模式最下面多一排「🗑 刪除」（`data-trash`）。拖進**私人**的：確認後真的刪（索引＋分塊）；拖進**公開**的：存到 `bookpages/_trash`＝`{items:['pub:…']}`，
+    從所有頁和「不放進書裡」拿掉（`trashSet`），**檔案還在網站上，要 Claude 讀 `_trash`（Firestore REST 公開可讀）後從書本 repo 刪檔並重產 json**；拖回任何一頁就取消。「📋 複製清單」最上面也會列出等著刪的公開檔案。`app.js?v=20261120f`。驗證 scratchpad `bkt/t4.js`。
   - **規則多 `bookpages`（任何人可讀、主辦人可寫）——使用者要再貼一次 `firestore.rules`。** `mock.js` 同步。`app.js?v=20261120e`。驗證 scratchpad `bkt/t3.js`（39 張頁卡、拖到別頁兩頁都存、私人拖進頁 media.page 更新、20 張版型卡含推薦、存版型、沒有溢出）。
 
 ## 只有網站主人能建立新的一趟（2026-11-12）
