@@ -36,7 +36,7 @@ export default {
   async removeUserTrip(uid, tripId) { if (S.users[uid]) delete S.users[uid].trips[tripId]; save(); },
 
   async getTrip(id) { if (!T(id)) return null; if (!isMember(id)) throw deny(); return { id, ...T(id).data }; },
-  async createTrip(id, data) { if (T(id)) throw deny(); S.trips[id] = { data, members: {}, expenses: {}, settles: {}, restos: {}, budget: {}, photos: {}, pages: {}, media: {}, notes: {}, chunks: {}, private: {} }; save(); },
+  async createTrip(id, data) { if (T(id)) throw deny(); S.trips[id] = { data, members: {}, expenses: {}, settles: {}, restos: {}, budget: {}, photos: {}, pages: {}, media: {}, notes: {}, bookpages: {}, chunks: {}, private: {} }; save(); },
   async updateTrip(id, patch) { if (!isMember(id)) throw deny(); if (!isOwner(id) && Object.keys(patch).some(k => k !== 'rate')) throw deny(); Object.assign(T(id).data, patch); save(); },
   watchTrip(id, cb, err) { const f = () => { if (!T(id)) return cb(null); isMember(id) ? cb({ id, ...T(id).data }) : err && err(deny()); }; subs.add(f); setTimeout(f, 0); return () => subs.delete(f); },
 
@@ -47,7 +47,7 @@ export default {
     const f = () => {
       if (!T(id)) return cb([]);
       let rows = Object.entries(T(id)[sub] || {}).map(([k, v]) => ({ id: k, ...v }));
-      if (!isMember(id)) { if (sub === 'restos' && filter) rows = rows.filter(r => r[filter[0]] === filter[1]); else if (sub === 'pages') {} else return err && err(deny()); }
+      if (!isMember(id)) { if (sub === 'restos' && filter) rows = rows.filter(r => r[filter[0]] === filter[1]); else if (sub === 'pages' || sub === 'bookpages') {} else return err && err(deny()); }
       if (PRIV(sub) && !OLD && !(filter && filter[0] === 'vis' && filter[2] === 'array-contains' && filter[1] === me.uid)) return err && err(deny());   // 新規則：不帶 vis 條件的查詢整個被拒
       if (filter) rows = rows.filter(r => filter[2] === 'array-contains' ? (r[filter[0]] || []).includes(filter[1]) : r[filter[0]] === filter[1]);
       cb(JSON.parse(JSON.stringify(rows)));
@@ -64,7 +64,7 @@ export default {
     } else if (!isMember(id)) throw deny();
     else if (sub === 'expenses' && T(id)[sub][docId] && ((T(id)[sub][docId].by !== me.uid && !isOwner(id)) || (!OLD && !inVis(T(id)[sub][docId])))) throw deny();
     else if (sub === 'expenses' && (!visOk(sub, data) || (T(id)[sub][docId] && data.by !== T(id)[sub][docId].by))) throw deny();
-    else if ((sub === 'budget' || sub === 'pages' || sub === 'media' || sub === 'notes') && !isOwner(id)) throw deny();
+    else if ((sub === 'budget' || sub === 'pages' || sub === 'media' || sub === 'notes' || sub === 'bookpages') && !isOwner(id)) throw deny();
     T(id)[sub] = T(id)[sub] || {};
     T(id)[sub][docId] = data; save();
   },

@@ -19,7 +19,7 @@ catch (e) {   // 連不到 Firebase（沒網路、被擋）：不要停在「載
 }
 
 const $ = s => document.querySelector(s);
-const BOOKM = await import('./book.js?v=20261120d');
+const BOOKM = await import('./book.js?v=20261120e');
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const BASE = location.pathname.replace(/[^/]*$/, '');           // /trip-tools/
 const KNOWN = ['IzuAtami-trip', 'Oita_Fukoka_2026', '2025-osaka-kanazawa-miokokoen-nagano-tokyo', 'Osaka_Kyoto_Kobe', 'TaiwanTrip2026', '2027-taiwan'];
@@ -115,7 +115,7 @@ function closeTrip() { if (cur) (cur.unsub || []).forEach(f => { try { f(); } ca
 function openTrip(id) {
   if (cur && cur.id === id) return;
   closeTrip();
-  cur = { id, trip: null, members: [], expenses: [], settles: [], restos: [], budget: [], photos: [], pages: [], media: [], notes: [], unsub: [], err: null, loaded: false };
+  cur = { id, trip: null, members: [], expenses: [], settles: [], restos: [], budget: [], photos: [], pages: [], media: [], notes: [], bookpages: [], unsub: [], err: null, loaded: false };
   const c = cur, fail = e => { if (c !== cur) return; c.err = e; render(); };
   c.unsub.push(api.watchTrip(id, t => { if (c !== cur) return; c.trip = t; c.loaded = true; if (t && me && t.owner === me.uid) migrateVis(c); famFix(c); render(); }, fail));
   for (const sub of ['members', 'expenses', 'settles', 'restos', 'budget', 'photos', 'pages'])
@@ -123,8 +123,8 @@ function openTrip(id) {
       sub === 'budget' ? e => { if (c !== cur) return; c.bErr = e; render(); } : sub === 'photos' ? e => { if (c !== cur) return; c.phErr = e; render(); } : sub === 'pages' ? e => { if (c !== cur) return; c.pgErr = e; render(); } : fail,   // 預算／照片讀不到（規則還沒更新）只影響那一頁
       sub === 'expenses' || sub === 'settles' ? ['vis', me.uid, 'array-contains'] : undefined));   // 記帳、轉帳只讀自己在 vis 裡的
   // 書本版回憶錄的私人媒體與私人文字（只有 BOOK_TRIPS）；讀不到只影響「回憶錄」頁
-  if (BOOKM.isBookTrip(id)) for (const sub of ['media', 'notes'])
-    c.unsub.push(api.watch(id, sub, rows => { if (c !== cur) return; c[sub] = rows; c.mErr = null; if (route.page === 'book') render(); }, e => { if (c !== cur) return; c.mErr = e; if (route.page === 'book') render(); }));
+  if (BOOKM.isBookTrip(id)) for (const sub of ['media', 'notes', 'bookpages'])
+    c.unsub.push(api.watch(id, sub, rows => { if (c !== cur) return; c[sub] = rows; c.mErr = null; if (route.page === 'book') BOOKM.bkRender(render); }, e => { if (c !== cur) return; c.mErr = e; if (route.page === 'book') render(); }));
 }
 // 分了家庭之後，把自己記的、跟別人分的帳與轉帳補上家人（規則只讓記帳的人改；只會加人，不會把人拿掉）
 function famFix(c) {

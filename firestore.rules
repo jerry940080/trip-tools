@@ -114,6 +114,13 @@ service cloud.firestore {
         }
       }
 
+      // 書本版回憶錄的排版（2026-11-19）：每一頁放哪些照片影片（只存編號與順序）、用哪個版型。
+      // 任何人都讀得到（公開的書不登入也要照這個排；私人照片本身仍只有成員讀得到）、只有主辦人能寫
+      match /bookpages/{b} {
+        allow read: if true;
+        allow write: if isOwner(t);
+      }
+
       // 回憶錄的私人文字（例如不想公開的經驗）：成員讀得到、只有主辦人能寫
       match /notes/{n} {
         allow read: if isMember(t);
