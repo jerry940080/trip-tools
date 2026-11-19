@@ -71,18 +71,20 @@ export function pBook() {
   h += `<div class="card bkuse"><div><b>私人照片 ${nP} 張・影片 ${nV} 支</b><span>${MB(tot)}</span></div><i><u style="width:${Math.min(100, tot / QUOTA * 100).toFixed(1)}%"></u></i><div class="small">只有這趟的成員登入後看得到。免費額度 1 GiB（和記帳、其他行程共用），用到 600–700 MB 時要重新評估。</div></div>`;
   if (own) h += importCard();
   h += notesCard(own);
+  if (L.length) h += `<div class="bktools">${own ? `<button class="btn s" data-bk="selmode">${BK.sel ? '✕ 結束選取' : '☑ 選取多張，一起移到某頁'}</button>` : ''}<button class="btn s" data-bk="copylist">📋 複製清單給 Claude</button><div class="small">清單只有文字（編號、在哪一頁、順序、直／橫、你寫的說明），沒有照片。</div></div>`;
   // 依書的頁序分組
   const by = new Map(); L.forEach(m => { const k = pageOf(m.page) ? m.page : ''; if (!by.has(k)) by.set(k, []); by.get(k).push(m); });
   const order = [...BK.pages.map(p => p.k).filter(k => by.has(k)), ...(by.has('') ? [''] : [])];
   if (!L.length) h += `<div class="empty">${own ? '還沒有私人照片影片。先用壓縮工具壓好，再按上面的「選擇資料夾」。' : '主辦人還沒放私人照片影片。'}</div>`;
   for (const k of order) {
     const G = sortM(by.get(k)), p = pageOf(k);
-    h += `<div class="day"><span>${e(pageLabel(k))}${p && p.sp ? '　<i class="bksp">特殊頁</i>' : ''}</span><span>${G.filter(m => m.kind === 'photo').length} 張${G.some(m => m.kind === 'video') ? '・' + G.filter(m => m.kind === 'video').length + ' 支' : ''}</span></div><div class="bkgrid">`;
+    h += `<div class="day"><span>${e(pageLabel(k))}${p && p.sp ? '　<i class="bksp">特殊頁</i>' : ''}${BK.sel ? `　<button class="lnk" data-bk="selall" data-k="${e(k)}">全選這頁</button>` : ''}</span><span>${G.filter(m => m.kind === 'photo').length} 張${G.some(m => m.kind === 'video') ? '・' + G.filter(m => m.kind === 'video').length + ' 支' : ''}</span></div><div class="bkgrid">`;
     for (const m of G) { wantThumb(m); const u = thumbURL(m);
-      h += `<button class="bkt${m.h > m.w ? ' tall' : ''}" data-bk="open" data-id="${e(m.id)}" title="${e(m.id)}"><img data-th="${e(m.id)}" ${u ? `src="${u}"` : ''} alt="">${m.kind === 'video' ? `<b>▶ ${fmtDur(m.dur)}</b>` : ''}${m.note ? '<em>✎</em>' : ''}${m.focus ? '<s>◎</s>' : ''}</button>`; }
+      h += `<button class="bkt${m.h > m.w ? ' tall' : ''}${BK.sel && BK.sel.has(m.id) ? ' on' : ''}" data-bk="${BK.sel ? 'pick' : 'open'}" data-id="${e(m.id)}" title="${e(m.id)}"><img data-th="${e(m.id)}" ${u ? `src="${u}"` : ''} alt="">${m.kind === 'video' ? `<b>▶ ${fmtDur(m.dur)}</b>` : ''}${m.note ? '<em>✎</em>' : ''}${m.focus ? '<s>◎</s>' : ''}</button>`; }
     h += `</div>`;
   }
-  return h + `<div style="height:90px"></div>`;
+  if (BK.sel) h += `<div class="bksel"><b>已選 ${BK.sel.size} 項</b>${pageSelect('bkMoveTo', '')}<button class="btn" data-bk="move" ${BK.sel.size ? '' : 'disabled'}>移過去</button></div>`;
+  return h + `<div style="height:${BK.sel ? 170 : 90}px"></div>`;
 }
 
 function importCard() {
@@ -222,6 +224,24 @@ async function onClick(ev) {
   const a = el.dataset.bk, c = X.cur(), id = c && c.id;
   try {
     if (a === 'open') return openItem(el.dataset.id);
+    if (a === 'selmode') { BK.sel = BK.sel ? null : new Set(); return X.render(); }
+    if (a === 'pick') { BK.sel.has(el.dataset.id) ? BK.sel.delete(el.dataset.id) : BK.sel.add(el.dataset.id); return X.render(); }
+    if (a === 'selall') { const k = el.dataset.k, ids = media().filter(m => (pageOf(m.page) ? m.page : '') === k).map(m => m.id); const all = ids.every(i => BK.sel.has(i)); ids.forEach(i => all ? BK.sel.delete(i) : BK.sel.add(i)); return X.render(); }
+    if (a === 'move') {   // 依目前的順序接在目標頁最後面
+      const to = document.getElementById('bkMoveTo').value, ids = sortM(media().filter(m => BK.sel.has(m.id))).map(m => m.id);
+      if (!ids.length) return;
+      let o = Math.max(0, ...media().filter(m => m.page === to && !BK.sel.has(m.id)).map(m => m.order || 0));
+      el.disabled = true; el.textContent = '移動中…';
+      for (const i of ids) { o += 10; await X.api.update(id, 'media', i, { page: to, order: o }); }
+      BK.sel = new Set(); X.render(); return X.toast(`移了 ${ids.length} 項到「${pageLabel(to)}」`);
+    }
+    if (a === 'copylist') {
+      const by = new Map(); media().forEach(m => { const k = pageOf(m.page) ? m.page : ''; if (!by.has(k)) by.set(k, []); by.get(k).push(m); });
+      const ks = [...BK.pages.map(p => p.k).filter(k => by.has(k)), ...(by.has('') ? [''] : [])];
+      const txt = '北陸回憶錄・私人照片影片清單（' + media().length + ' 項）\n' + ks.map(k => `\n## ${pageLabel(k)}${k ? `（${k}）` : ''}\n` + sortM(by.get(k)).map((m, i) => `${i + 1}. ${m.id}　${m.kind === 'video' ? '影片 ' + fmtDur(m.dur) : '照片'}・${m.h > m.w ? '直' : (m.w > m.h * 2.2 ? '全景' : '橫')}${m.focus ? '・有焦點' : ''}${m.note ? '　「' + m.note + '」' : ''}`).join('\n')).join('\n');
+      try { await navigator.clipboard.writeText(txt); return X.toast('清單已複製，貼到對話裡就可以'); }
+      catch (err) { const sh = document.getElementById('sheet'); sh.innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between"><b>複製清單</b><button class="small" data-act="close">關閉</button></div><div class="small">自動複製失敗，請全選下面的文字自己複製。</div><textarea class="inp" rows="16" readonly>${e(txt)}</textarea>`; document.getElementById('dim').hidden = false; return; }
+    }
     if (a === 'note') return openNote(el.dataset.id);
     if (a === 'upload') return upload();
     if (a === 'stop') { if (BK.up) BK.up.stop = true; return; }
