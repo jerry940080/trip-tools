@@ -19,7 +19,7 @@ catch (e) {   // 連不到 Firebase（沒網路、被擋）：不要停在「載
 }
 
 const $ = s => document.querySelector(s);
-const BOOKM = await import('./book.js?v=20261120h');
+const BOOKM = await import('./book.js?v=20261120i');
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const BASE = location.pathname.replace(/[^/]*$/, '');           // /trip-tools/
 const KNOWN = ['IzuAtami-trip', 'Oita_Fukoka_2026', '2025-osaka-kanazawa-miokokoen-nagano-tokyo', 'Osaka_Kyoto_Kobe', 'TaiwanTrip2026', '2027-taiwan'];

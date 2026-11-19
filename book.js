@@ -240,6 +240,23 @@ async function onClick(ev) {
     if (a === 'tpool') return tileMove(el.dataset.id, '', 'pool');
     if (a === 'ttrash') { if (el.dataset.id.startsWith('pv:') && !confirm('確定刪除這項私人照片影片？刪掉後要重新上傳才會回來。')) return; return tileMove(el.dataset.id, '', 'trash'); }
     if (a === 'laypick') return openLayPick(el.dataset.k);
+    if (a === 'cpadd') return cpForm({ after: el.dataset.after });
+    if (a === 'cpedit') return cpForm({ k: el.dataset.k });
+    if (a === 'cpsave') {
+      const t = document.getElementById('cpT').value.trim(); if (!t) return X.toast('先寫標題');
+      const v = { t, pl: document.getElementById('cpPl').value.trim(), d: document.getElementById('cpD').value, x: document.getElementById('cpX').value.trim() };
+      const L = cpList().map(x => ({ ...x }));
+      if (el.dataset.k) { const c = L.find(x => x.k === el.dataset.k); if (c) Object.assign(c, v); }
+      else L.push({ k: 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), after: el.dataset.after, ...v });
+      await cpSaveAll(L); document.getElementById('dim').hidden = true; X.render(); return X.toast(el.dataset.k ? '已存檔' : '加好了，把照片影片拖進這頁');
+    }
+    if (a === 'cpdel') {
+      const k = el.dataset.k, ids = pageIds(k); if (!confirm(`刪除這一頁？${ids.length ? `裡面的 ${ids.length} 項會回到「不放進書裡」。` : ''}`)) return;
+      const L = cpList(), me0 = L.find(x => x.k === k), L2 = L.filter(x => x.k !== k).map(x => x.after === k ? { ...x, after: me0 ? me0.after : x.after } : x);
+      for (const m of media().filter(m => m.page === k)) await X.api.update(id, 'media', m.id, { page: '' });
+      await cpSaveAll(L2); if (bpDoc(k)) await X.api.remove(id, 'bookpages', k);
+      document.getElementById('dim').hidden = true; X.render(); return X.toast('已刪除這一頁');
+    }
     if (a === 'sreset') { const k = el.dataset.k, d = bpDoc(k) || {}, sl = { ...(d.slots || {}) }; delete sl[el.dataset.s]; await spSave(k, { slots: sl }); X.render(); return X.toast('已還原成原本的內容'); }
     if (a === 'tadd') { const TP = tapesOf(); TP.push({ t: '新的卡帶 ' + (TP.length + 1), items: [] }); await spSave('cass', { tapes: TP }); X.render(); return X.toast('加了一捲，把照片或影片拖進去'); }
     if (a === 'tdel') { const TP = tapesOf(), i = +el.dataset.i; if (TP[i].items.length && !confirm(`刪除卡帶「${TP[i].t}」？裡面的 ${TP[i].items.length} 項會回到「不放進書裡」。`)) return; TP.splice(i, 1); await spSave('cass', { tapes: TP }); X.render(); return X.toast('已刪除這捲'); }
@@ -323,6 +340,35 @@ const trashSet = () => new Set(((bpDoc('_trash') || {}).items) || []);
 /* 特殊頁的格子（2026-11-19）：bookpages/{特殊頁}＝{slots:{格子 id:[項目…]}}，卡帶 bookpages/cass＝{tapes:[{t 名稱, items}]}。
    沒設定的格子用 book-media.json 的 sp[].slots[].def（書上原本的內容）。 */
 const spList = () => BK.bm.sp || [];
+/* 自己加的照片頁（2026-11-19）：bookpages/_custom＝{pages:[{k:'c_…', after, t, pl, d, x}]}；照片與版型跟一般頁一樣存 bookpages/{k}。
+   書本插頁的規則：放在 after 那頁後面（接在同一頁後面已經加過的頁之後）；after 是車票頁（t1…）時放在車票前面。這裡照同一套規則排清單。 */
+const cpList = () => ((bpDoc('_custom') || {}).pages || []).filter(c => c && /^c_[\w-]+$/.test(c.k || ''));
+function cpMerge() {
+  if (!BK.pages0 && BK.pages) BK.pages0 = BK.pages; if (!BK.bmPages0 && BK.bm && BK.bm.pages) BK.bmPages0 = BK.bm.pages;
+  if (!BK.pages0 || !BK.bmPages0) return;
+  const L = cpList(), anc = {}; L.forEach(c => anc[c.k] = c.after);
+  const seq = BK.pages0.map(p => p.k), chainOf = (k, a) => { let g = 0; while (k && g++ < 20) { if (anc[k] === a) return true; k = anc[k]; } return false; };
+  for (const c of L) { let a = c.after, g = 0; while (a && !seq.includes(a) && anc[a] !== undefined && g++ < 20) a = anc[a]; let i = seq.indexOf(a); if (i < 0) { seq.push(c.k); continue; }
+    if (/^t\d$/.test(a)) { seq.splice(i, 0, c.k); continue; } while (i + 1 < seq.length && chainOf(seq[i + 1], a)) i++; seq.splice(i + 1, 0, c.k); }
+  const by = new Map(BK.pages0.map(p => [p.k, p])), bmk = new Map(BK.bmPages0.map(p => [p.k, p])), cm = new Map(L.map(c => [c.k, c]));
+  const cp = c => ({ k: c.k, t: c.t || '（沒有標題）', d: +c.d || null, def: [], custom: 1 });
+  BK.pages = seq.map(k => by.get(k) || (cm.has(k) ? cp(cm.get(k)) : null)).filter(Boolean);
+  BK.bm.pages = seq.filter(k => bmk.has(k) || cm.has(k)).map(k => bmk.get(k) || cp(cm.get(k)));
+}
+function cpForm(o) {   // o：{after} 新增、或 {k} 修改
+  const c = o.k ? cpList().find(x => x.k === o.k) || {} : {}, after = o.k ? c.after : o.after, pg = pageOf(after);
+  const dsel = `<select class="inp" id="cpD"><option value="">（不寫）</option>${Array.from({ length: 9 }, (_, i) => `<option value="${i + 1}"${String(c.d || (o.k ? '' : (pg && pg.d) || '')) === String(i + 1) ? ' selected' : ''}>Day ${i + 1}</option>`).join('')}</select>`;
+  const sh = document.getElementById('sheet');
+  sh.innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:17px">${o.k ? '修改這一頁' : '加一頁照片頁'}</b><button class="small" data-act="close">關閉</button></div>
+    <div class="small" style="margin:4px 0 10px">放在「${e(pageLabel(after))}」後面${/^t\d$/.test(after || '') ? '（這是車票頁，新頁會放在車票前面）' : ''}。存好之後把照片影片拖進這頁、選版型；<b>還沒有任何照片的頁，書上不會出現</b>。</div>
+    <div class="lab">標題</div><input class="inp" id="cpT" maxlength="40" value="${e(c.t || '')}" placeholder="例如：妙高高原站的雪牆">
+    <div class="lab">地點（左上角的小字）</div><input class="inp" id="cpPl" maxlength="20" value="${e(c.pl || (o.k ? '' : ''))}" placeholder="例如：妙高高原">
+    <div class="lab">哪一天</div>${dsel}
+    <div class="lab">文字（可以空著，一兩句就好）</div><textarea class="inp" id="cpX" rows="3" maxlength="300">${e(c.x || '')}</textarea>
+    <div class="acts" style="margin-top:14px"><button class="btn" data-bk="cpsave" data-k="${e(o.k || '')}" data-after="${e(after || '')}">存檔</button>${o.k ? `<button data-bk="cpdel" data-k="${e(o.k)}" style="color:var(--bad)">刪除這一頁</button>` : ''}</div>`;
+  document.getElementById('dim').hidden = false;
+}
+async function cpSaveAll(pages) { await X.api.set(X.cur().id, 'bookpages', '_custom', { pages, by: X.me().uid, at: Date.now() }); }
 const spOf = k => spList().find(x => x.k === k);
 const okIds = L => { const T = trashSet(); return L.filter(i => itInfo(i) && !T.has(i)); };
 function slotIds(k, sid) { const d = bpDoc(k), sp = spOf(k), sl = sp && (sp.slots || []).find(z => z.id === sid); const set = d && d.slots && Array.isArray(d.slots[sid]); return okIds(set ? d.slots[sid] : (sl ? sl.def : [])); }
@@ -368,6 +414,7 @@ function recommend(ids) {   // 依這頁的組合推薦版型
   return r;
 }
 function layoutView() {
+  cpMerge();
   const c = X.cur(), own = X.isOwner(), LY = LYMAP(), repo = c.id;
   const pages = BK.bm.pages || [], editK = new Set(pages.map(p => p.k));
   let h = `<div class="card small" style="line-height:1.7">${own ? '<b>點縮圖</b>：往前／往後、移到別頁、不放進書裡、刪除。<b>拖曳縮圖</b>：排順序、拖到別頁；拖的時候畫面下方會浮出「不放進書裡」「🗑 刪除」，放上去就好。每頁右上角選<b>版型</b>。改了馬上存。手機上請<b>按住縮圖一下</b>再拖。' : '主辦人排的版面（只能看）。'}</div>`;
@@ -375,10 +422,10 @@ function layoutView() {
   for (const p of pages) {
     const ids = pageIds(p.k); ids.forEach(i => used.add(i)); const d = bpDoc(p.k), lay = (d && d.layout) || 'auto', l = LY[lay] || LY.auto;
     const v = ids.filter(i => (itInfo(i) || [])[1] === 'v').length;
-    h += `<div class="lpg" data-k="${e(p.k)}"><div class="lph"><div><small>${p.d ? 'Day ' + p.d : ''}</small><b>${e(p.t)}</b><span>${ids.length - v} 張${v ? '・' + v + ' 支影片' : ''}</span></div>
+    h += `<div class="lpg${p.custom ? ' cpp' : ''}" data-k="${e(p.k)}"><div class="lph"><div><small>${p.custom ? '自己加的頁・' : ''}${p.d ? 'Day ' + p.d : ''}</small><b>${e(p.t)}${p.custom && own ? ` <button class="small" data-bk="cpedit" data-k="${e(p.k)}">✎ 修改</button>` : ''}</b><span>${ids.length - v} 張${v ? '・' + v + ' 支影片' : ''}${p.custom && !ids.length ? '・<em style="color:var(--bad);font-style:normal">還沒有照片，書上不會出現</em>' : ''}</span></div>
       <a class="lnk" href="/${repo}/index.html#pg=${e(p.k)}" target="_blank" rel="noopener">在書裡看 ↗</a>
       <button class="lay" data-bk="laypick" data-k="${e(p.k)}" ${own ? '' : 'disabled'}>${laySvg(l)}<span>${e(l.n)}</span></button></div>
-      <div class="lst" data-k="${e(p.k)}">${ids.map(tileHTML).join('')}</div></div>`;
+      <div class="lst" data-k="${e(p.k)}">${ids.map(tileHTML).join('')}</div>${own ? `<button class="cpadd" data-bk="cpadd" data-after="${e(p.k)}">＋ 在這頁後面加一頁</button>` : ''}</div>`;
   }
   // 特殊頁：版面固定，每一格放哪些照片影片可以換（公開、私人都可以）
   const SPU = spUsed(); SPU.forEach(i => used.add(i));
@@ -394,6 +441,7 @@ function layoutView() {
         <div class="lst" data-k="cass" data-tape="${i}">${t.items.map(tileHTML).join('')}</div>`; });
       if (own) h += `<button class="btn ghost" data-bk="tadd" style="margin:6px 0 2px">＋ 新增一捲卡帶</button>`; }
     const rest = sortM(media().filter(m => m.page === sp.k && !inSlot.has('pv:' + m.id))).map(m => 'pv:' + m.id);
+    if (own) h += `<button class="cpadd" data-bk="cpadd" data-after="${e(sp.k)}">＋ 在這頁後面加一頁照片頁</button>`;
     if (rest.length) h += `<div class="slh"><b>放在這頁、還沒放進格子的私人項目</b><small>書上只會在「🔒 私人」按鈕裡</small></div><div class="lst" data-k="${e(sp.k)}" data-sp="1">${rest.map(tileHTML).join('')}</div>`;
     h += `</div>`;
   }
