@@ -229,7 +229,7 @@ async function onChange(ev) {
 async function onClick(ev) {
   const img = ev.target.closest('#bkImg');
   if (img && ED && X.isOwner()) { const r = img.getBoundingClientRect(); ED.focus = { x: Math.round((ev.clientX - r.left) / r.width * 100), y: Math.round((ev.clientY - r.top) / r.height * 100) }; return drawFocus(); }
-  const lt = ev.target.closest('.lst .lt'); if (lt && !BK.drag && X.isOwner()) return openTile(lt.dataset.id);   // 排版模式點縮圖：小選單
+  const lt = ev.target.closest('.lst .lt'); if (lt && !BK.drag && X.isOwner()) { if (BK.lsel) { const i = lt.dataset.id; BK.lsel.has(i) ? BK.lsel.delete(i) : BK.lsel.add(i); return lselPaint(); } return openTile(lt.dataset.id); }   // 排版模式點縮圖：小選單
   const el = ev.target.closest('[data-bk]'); if (!el) return;
   const a = el.dataset.bk, c = X.cur(), id = c && c.id;
   try {
@@ -240,15 +240,35 @@ async function onClick(ev) {
     if (a === 'tpool') return tileMove(el.dataset.id, '', 'pool');
     if (a === 'ttrash') { if (el.dataset.id.startsWith('pv:') && !confirm('確定刪除這項私人照片影片？刪掉後要重新上傳才會回來。')) return; return tileMove(el.dataset.id, '', 'trash'); }
     if (a === 'laypick') return openLayPick(el.dataset.k);
-    if (a === 'cpadd') return cpForm({ after: el.dataset.after });
+    if (a === 'cpadd') return cpForm({ after: el.dataset.after, guess: (BK.bm.pages || []).slice(-1)[0]?.k });
+    if (a === 'lselmode') { BK.lsel = BK.lsel ? null : new Set(); return X.render(); }
+    if (a === 'lselpool') { if (!BK.lsel) BK.lsel = new Set(); document.querySelectorAll('.lst[data-pool] .lt').forEach(t => BK.lsel.add(t.dataset.id)); return X.render(); }
+    if (a === 'cside') { ev.stopPropagation(); BK.cside = BK.cside === 'l' ? 'r' : 'l'; try { localStorage.setItem('tt-cside', BK.cside); } catch (err) {} return X.render(); }
+    if (a === 'ctog') { if (matchMedia('(min-width:900px)').matches) return; BK.copen = !BK.copen; return X.render(); }
+    if (a === 'cf') { BK.cf = el.dataset.v; BK.cscroll = 0; return X.render(); }
+    if (a === 'cday') { BK.cday = +el.dataset.v; BK.cscroll = 0; return X.render(); }
+    if (a === 'cgrp') { const g = el.dataset.g; BK.cclosed.has(g) ? BK.cclosed.delete(g) : BK.cclosed.add(g); return X.render(); }
+    if (a === 'lselgo') {
+      const to = document.getElementById('lselTo').value, ids = [...BK.lsel]; if (!ids.length) return X.toast('還沒勾任何一張');
+      if (!to) return X.toast('先選要移到哪裡');
+      if (to === '__new') { const w = whereIs(ids[0]); return cpForm({ after: '', sel: ids.length, guess: w.pool || w.trash ? (BK.bm.pages || []).slice(-1)[0]?.k : w.k }); }
+      el.disabled = true; el.textContent = '移動中…';
+      try { const r = await batchMove(ids, to); if (!r) return X.render(); BK.lsel = new Set(); X.render(); return X.toast(`移了 ${r.n} 項` + (r.skip ? `（${r.skip} 項類型不合，沒有移）` : '')); }
+      catch (err) { X.render(); return X.toast('存檔失敗：' + (err.code || err.message)); }
+    }
     if (a === 'cpedit') return cpForm({ k: el.dataset.k });
     if (a === 'cpsave') {
       const t = document.getElementById('cpT').value.trim(); if (!t) return X.toast('先寫標題');
       const v = { t, pl: document.getElementById('cpPl').value.trim(), d: document.getElementById('cpD').value, x: document.getElementById('cpX').value.trim() };
       const L = cpList().map(x => ({ ...x }));
       if (el.dataset.k) { const c = L.find(x => x.k === el.dataset.k); if (c) Object.assign(c, v); }
-      else L.push({ k: 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), after: el.dataset.after, ...v });
-      await cpSaveAll(L); document.getElementById('dim').hidden = true; X.render(); return X.toast(el.dataset.k ? '已存檔' : '加好了，把照片影片拖進這頁');
+      let nk = '';
+      if (!el.dataset.k) { const af = el.dataset.after || (document.getElementById('cpA') || {}).value || ''; if (!af) return X.toast('先選放在哪一頁後面'); nk = 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); L.push({ k: nk, after: af, ...v }); }
+      await cpSaveAll(L); document.getElementById('dim').hidden = true;
+      if (nk && el.dataset.sel && BK.lsel && BK.lsel.size) { cpMerge(); BK.pages0 = BK.pages0; const ids = [...BK.lsel];
+        (BK.bm.pages || []).some(p => p.k === nk) || BK.bm.pages.push({ k: nk, t: v.t, d: +v.d || null, def: [], custom: 1 });
+        const r = await batchMove(ids, nk); BK.lsel = new Set(); X.render(); return X.toast(`新增了「${v.t}」，放進 ${r ? r.n : 0} 項`); }
+      X.render(); return X.toast(el.dataset.k ? '已存檔' : '加好了，把照片影片拖進這頁');
     }
     if (a === 'cpdel') {
       const k = el.dataset.k, ids = pageIds(k); if (!confirm(`刪除這一頁？${ids.length ? `裡面的 ${ids.length} 項會回到「不放進書裡」。` : ''}`)) return;
@@ -356,17 +376,67 @@ function cpMerge() {
   BK.bm.pages = seq.filter(k => bmk.has(k) || cm.has(k)).map(k => bmk.get(k) || cp(cm.get(k)));
 }
 function cpForm(o) {   // o：{after} 新增、或 {k} 修改
-  const c = o.k ? cpList().find(x => x.k === o.k) || {} : {}, after = o.k ? c.after : o.after, pg = pageOf(after);
+  const c = o.k ? cpList().find(x => x.k === o.k) || {} : {}, after = o.k ? c.after : (o.after || ''), pg = pageOf(after);
+  const asel = !o.k && !after ? `<div class="lab">放在哪一頁後面</div><select class="inp" id="cpA">${(BK.pages || []).map(p => `<option value="${e(p.k)}"${p.k === o.guess ? ' selected' : ''}>${p.d ? 'Day ' + p.d + '・' : ''}${e(p.t)}</option>`).join('')}</select>` : '';
   const dsel = `<select class="inp" id="cpD"><option value="">（不寫）</option>${Array.from({ length: 9 }, (_, i) => `<option value="${i + 1}"${String(c.d || (o.k ? '' : (pg && pg.d) || '')) === String(i + 1) ? ' selected' : ''}>Day ${i + 1}</option>`).join('')}</select>`;
   const sh = document.getElementById('sheet');
   sh.innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:17px">${o.k ? '修改這一頁' : '加一頁照片頁'}</b><button class="small" data-act="close">關閉</button></div>
-    <div class="small" style="margin:4px 0 10px">放在「${e(pageLabel(after))}」後面${/^t\d$/.test(after || '') ? '（這是車票頁，新頁會放在車票前面）' : ''}。存好之後把照片影片拖進這頁、選版型；<b>還沒有任何照片的頁，書上不會出現</b>。</div>
+    <div class="small" style="margin:4px 0 10px">${after ? `放在「${e(pageLabel(after))}」後面${/^t\d$/.test(after) ? '（這是車票頁，新頁會放在車票前面）' : ''}。` : ''}${o.sel ? `存好之後，勾選的 <b>${o.sel} 項</b>會直接放進這一頁。` : '存好之後把照片影片拖進這頁、選版型；<b>還沒有任何照片的頁，書上不會出現</b>。'}</div>${asel}
     <div class="lab">標題</div><input class="inp" id="cpT" maxlength="40" value="${e(c.t || '')}" placeholder="例如：妙高高原站的雪牆">
     <div class="lab">地點（左上角的小字）</div><input class="inp" id="cpPl" maxlength="20" value="${e(c.pl || (o.k ? '' : ''))}" placeholder="例如：妙高高原">
     <div class="lab">哪一天</div>${dsel}
     <div class="lab">文字（可以空著，一兩句就好）</div><textarea class="inp" id="cpX" rows="3" maxlength="300">${e(c.x || '')}</textarea>
-    <div class="acts" style="margin-top:14px"><button class="btn" data-bk="cpsave" data-k="${e(o.k || '')}" data-after="${e(after || '')}">存檔</button>${o.k ? `<button data-bk="cpdel" data-k="${e(o.k)}" style="color:var(--bad)">刪除這一頁</button>` : ''}</div>`;
+    <div class="acts" style="margin-top:14px"><button class="btn" data-bk="cpsave" data-k="${e(o.k || '')}" data-after="${e(after || '')}" data-sel="${o.sel ? 1 : ''}">存檔</button>${o.k ? `<button data-bk="cpdel" data-k="${e(o.k)}" style="color:var(--bad)">刪除這一頁</button>` : ''}</div>`;
   document.getElementById('dim').hidden = false;
+}
+/* 候選名單（2026-11-19）：還沒放進書裡的照片影片（公開＋私人），依原本屬於哪一頁／哪一天分組，固定在畫面側邊（手機是底部抽屜），直接拖到頁上。 */
+const TRIP_D1 = Date.UTC(2025, 1, 22);
+function dayOfTs(t) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(t || '')); if (!m) return 0; const d = Math.round((Date.UTC(+m[1], +m[2] - 1, +m[3]) - TRIP_D1) / 864e5) + 1; return d >= 1 && d <= 9 ? d : 0; }
+function candCat(id) {
+  const P = BK.pages || [];
+  if (id.startsWith('pub:')) { const x = (BK.bm.items || {})[id.slice(4)] || [], src = x[3] || '', i = P.findIndex(p => p.k === src), pg = P[i];
+    return pg ? { key: 'p:' + src, label: (pg.d ? 'Day ' + pg.d + '・' : '') + pg.t, d: pg.d || 0, ord: i } : { key: 'p:?', label: '其他', d: 99, ord: 9999 }; }
+  const m = mById(id.slice(3)), d = m ? dayOfTs(m.taken || m.ts) : 0, i = P.findIndex(p => p.d === d);
+  return { key: 'v:' + d, label: d ? `Day ${d}・🔒 私人` : '🔒 私人（沒有日期）', d: d || 98, ord: i < 0 ? 9000 : i + 0.5 };
+}
+function candPanel(pool, own) {
+  const side = BK.cside || (BK.cside = (() => { try { return localStorage.getItem('tt-cside') || 'r'; } catch (e) { return 'r'; } })());
+  const f = BK.cf || 'all', fd = BK.cday || 0, info = id => itInfo(id) || [];
+  const L = pool.filter(id => f === 'all' || (f === 'pub' && id.startsWith('pub:')) || (f === 'pv' && id.startsWith('pv:')) || (f === 'v' && info(id)[1] === 'v')).map(id => ({ id, c: candCat(id) })).filter(o => !fd || o.c.d === fd);
+  const G = new Map(); L.forEach(o => { if (!G.has(o.c.key)) G.set(o.c.key, { c: o.c, ids: [] }); G.get(o.c.key).ids.push(o.id); });
+  const gs = [...G.values()].sort((a, b) => a.c.d - b.c.d || a.c.ord - b.c.ord), days = [...new Set(pool.map(id => candCat(id).d).filter(d => d && d < 10))].sort((a, b) => a - b);
+  const CC = BK.cclosed || (BK.cclosed = new Set()), chip = (v, t, on, a) => `<button class="cchip${on ? ' on' : ''}" data-bk="${a}" data-v="${v}">${t}</button>`;
+  return `<aside class="cand d${side}${BK.copen ? ' open' : ''}"><div class="cdh" data-bk="ctog"><b>候選 <em>${pool.length}</em></b><span class="small">還沒放進書裡・拖到頁上就放進去</span>
+      <button class="small cside" data-bk="cside" title="換邊">${side === 'r' ? '⇤ 放左邊' : '放右邊 ⇥'}</button><span class="cmob">${BK.copen ? '▾ 收起' : '▴ 展開'}</span></div>
+    <div class="cdf">${chip('all', '全部', f === 'all', 'cf')}${chip('pub', '公開', f === 'pub', 'cf')}${chip('pv', '🔒 私人', f === 'pv', 'cf')}${chip('v', '▶ 影片', f === 'v', 'cf')}<span class="csep"></span>${chip(0, '每天', !fd, 'cday')}${days.map(d => chip(d, 'D' + d, fd === d, 'cday')).join('')}${own && BK.lsel ? `<button class="cchip" data-bk="lselpool">☑ 全選看得到的</button>` : ''}</div>
+    <div class="cdb">${gs.length ? gs.map(g => `<div class="cgh" data-bk="cgrp" data-g="${e(g.c.key)}">${CC.has(g.c.key) ? '▸' : '▾'} ${e(g.c.label)} <small>${g.ids.length}</small></div>${CC.has(g.c.key) ? '' : `<div class="lst cl" data-k="" data-pool="1">${g.ids.map(tileHTML).join('')}</div>`}`).join('')
+      : `<div class="small" style="padding:18px 6px;text-align:center">${pool.length ? '這個篩選沒有東西' : '全部都放進書裡了 🎉'}</div>`}<div class="lst cl cdrop" data-k="" data-pool="1"></div></div></aside>`;
+}
+/* 多選（2026-11-19）：勾好幾張 → 一次移到某頁／某一格／用它們新增一頁 */
+function lselTargets(sel) {   // 下拉：一般頁＋特殊頁的格子＋卡帶
+  return (BK.bm.pages || []).map(p => `<option value="${e(p.k)}">${p.custom ? '（自己加的）' : ''}${p.d ? 'Day ' + p.d + '・' : ''}${e(p.t)}</option>`).join('')
+    + spList().flatMap(sp => [...(sp.slots || []).map(z => `<option value="${e(sp.k + '|' + z.id)}">（特殊頁）${e(sp.t)}・${e(z.n)}</option>`), ...(sp.tapes ? tapesOf().map((t, i) => `<option value="cass|#${i}">（卡帶）${e(t.t || '未命名')}</option>`) : [])]).join('');
+}
+function lselBar() { return `<div class="bksel lsel"><b id="lselN">${BK.lsel.size} 項</b><select class="inp" id="lselTo"><option value="">移到…</option><option value="__new">＋ 用這些新增一頁…</option>${lselTargets()}<option value="__pool">不放進書裡</option></select><button class="btn" data-bk="lselgo">移過去</button><button class="small lsx" data-bk="lselmode">取消</button></div>`; }
+function lselPaint() { if (!BK.lsel) return; document.querySelectorAll('.lst .lt').forEach(t => t.classList.toggle('sel', BK.lsel.has(t.dataset.id))); const n = document.getElementById('lselN'); if (n) n.textContent = BK.lsel.size + ' 項';
+  document.querySelectorAll('.lst').forEach(el => { if (el._s) el._s.option('disabled', !!BK.lsel); }); }
+async function batchMove(ids, toK) {
+  const S = new Set(ids), wr = [], seen = new Set();
+  let add = ids.slice(), skip = 0;
+  if (toK.includes('|') && !toK.includes('#')) { const [k2, s2] = toK.split('|'), z = ((spOf(k2) || {}).slots || []).find(q => q.id === s2);
+    if (z && z.k !== '*') { const ok = add.filter(i => ((itInfo(i) || [])[1] === 'v') === (z.k === 'v')); skip = add.length - ok.length; add = ok; } }
+  if (!add.length) return X.toast('這一格放不進這些（' + (toK.includes('|') ? '格子有限制照片或影片' : '') + '）');
+  const AS = new Set(add);
+  for (const id of add) { const w = whereIs(id); if (w.pool) continue; const key = w.k + '|' + (w.slot || '') + '|' + (w.tape ?? '') + (w.trash ? '|t' : ''); if (seen.has(key)) continue; seen.add(key);
+    wr.push({ k: w.k, ids: w.ids.filter(x => !AS.has(x)), sp: w.sp, trash: w.trash, slot: w.slot, tape: w.tape }); }
+  if (toK === '__pool') wr.push({ k: '', ids: add, add: true });
+  else if (toK.includes('|')) { const [k2, s2] = toK.split('|'); if (s2.startsWith('#')) { const t = tapesOf()[+s2.slice(1)]; wr.push({ k: 'cass', tape: s2.slice(1), ids: [...(t ? t.items : []).filter(x => !AS.has(x)), ...add] }); }
+    else wr.push({ k: k2, slot: s2, ids: [...slotIds(k2, s2).filter(x => !AS.has(x)), ...add] }); }
+  else wr.push({ k: toK, ids: [...pageIds(toK).filter(x => !AS.has(x)), ...add] });
+  // 同一排同時是來源和目的地時，只留目的地那一筆（它已經是最後的樣子）
+  const tgt = wr[wr.length - 1], same = o => o !== tgt && o.k === tgt.k && (o.slot || '') === (tgt.slot || '') && String(o.tape ?? '') === String(tgt.tape ?? '') && !o.trash && !tgt.trash && tgt.k;
+  await writeAll(wr.filter(o => !same(o)));
+  return { n: add.length, skip };
 }
 async function cpSaveAll(pages) { await X.api.set(X.cur().id, 'bookpages', '_custom', { pages, by: X.me().uid, at: Date.now() }); }
 const spOf = k => spList().find(x => x.k === k);
@@ -417,7 +487,8 @@ function layoutView() {
   cpMerge();
   const c = X.cur(), own = X.isOwner(), LY = LYMAP(), repo = c.id;
   const pages = BK.bm.pages || [], editK = new Set(pages.map(p => p.k));
-  let h = `<div class="card small" style="line-height:1.7">${own ? '<b>點縮圖</b>：往前／往後、移到別頁、不放進書裡、刪除。<b>拖曳縮圖</b>：排順序、拖到別頁；拖的時候畫面下方會浮出「不放進書裡」「🗑 刪除」，放上去就好。每頁右上角選<b>版型</b>。改了馬上存。手機上請<b>按住縮圖一下</b>再拖。' : '主辦人排的版面（只能看）。'}</div>`;
+  let h = own ? `<div class="lseltop"><button class="btn${BK.lsel ? '' : ' ghost'}" data-bk="lselmode">${BK.lsel ? '✓ 多選中（點縮圖勾選）' : '☑ 多選：一次勾好幾張'}</button><button class="btn ghost" data-bk="cpadd" data-after="">＋ 新增一頁</button></div>` : '';
+  h += `<div class="card small" style="line-height:1.7">${own ? '<b>點縮圖</b>：往前／往後、移到別頁、不放進書裡、刪除。<b>拖曳縮圖</b>：排順序、拖到別頁；拖的時候畫面下方會浮出「不放進書裡」「🗑 刪除」，放上去就好。每頁右上角選<b>版型</b>。改了馬上存。手機上請<b>按住縮圖一下</b>再拖。' : '主辦人排的版面（只能看）。'}</div>`;
   const used = new Set();
   for (const p of pages) {
     const ids = pageIds(p.k); ids.forEach(i => used.add(i)); const d = bpDoc(p.k), lay = (d && d.layout) || 'auto', l = LY[lay] || LY.auto;
@@ -450,11 +521,12 @@ function layoutView() {
   for (const p of sp0) h += `<div class="lpg sp" data-k="${e(p.k)}"><div class="lph"><div><small>${p.d ? 'Day ' + p.d : ''}</small><b>${e(p.t)}</b></div></div><div class="lst" data-k="${e(p.k)}" data-sp="1">${sortM(media().filter(m => m.page === p.k)).map(m => tileHTML('pv:' + m.id)).join('')}</div></div>`;
   // 不放進書裡：還沒指定頁的私人項目＋從頁上拿掉的公開照片
   const defAll = new Set(pages.flatMap(p => p.def)), T = trashSet();
-  const pool = [...media().filter(m => !m.page || !(BK.pages || []).some(p => p.k === m.page)).map(m => 'pv:' + m.id), ...[...defAll].map(n => 'pub:' + n).filter(i => !used.has(i) && !T.has(i))];
-  h += `<div class="lpg pool"><div class="lph"><div><b>不放進書裡</b><span>${pool.length} 項・拖回任何一頁就會出現</span></div></div><div class="lst" data-k="" data-pool="1">${pool.map(tileHTML).join('')}</div></div>`;
+  const pool = [...media().filter(m => !m.page || !(BK.pages || []).some(p => p.k === m.page)).map(m => 'pv:' + m.id), ...Object.keys(BK.bm.items || {}).map(n => 'pub:' + n).filter(i => !used.has(i) && !T.has(i))];   /* 2026-11-19：所有公開項目都算（原本只算各頁預設的，車票頁、相簿頁的照片永遠不會出現） */
+  h += candPanel(pool, own);
   if (own) h += `<div class="lpg trash"><div class="lph"><div><b>🗑 刪除</b><span>拖進來：<b>私人</b>的會問你一次然後直接刪掉；<b>公開</b>的先從書裡全部拿掉，等 Claude 把網站上的檔案刪除（拖回任何一頁就取消）。</span></div></div><div class="lst" data-k="_trash" data-trash="1">${[...T].map(tileHTML).join('')}</div></div>`;
   if (own) h += `<div id="ldz"><div class="dz" data-z="pool"><span>拖到這裡：不放進書裡</span></div><div class="dz tr" data-z="trash"><span>🗑 拖到這裡：刪除</span></div></div>`;
-  if (own) setTimeout(initSort, 0);
+  if (own && BK.lsel) h += lselBar();
+  if (own) setTimeout(() => { initSort(); lselPaint(); const b = document.querySelector('.cand .cdb'); if (b) { b.scrollTop = BK.cscroll || 0; b.onscroll = () => { BK.cscroll = b.scrollTop; }; } }, 0);
   return h;
 }
 async function initSort() {
