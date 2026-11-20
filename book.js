@@ -272,7 +272,7 @@ async function onClick(ev) {
       const t = document.getElementById('cpT').value.trim(); if (!t) return X.toast('先寫標題');
       const v = { t, pl: document.getElementById('cpPl').value.trim(), d: document.getElementById('cpD').value, x: document.getElementById('cpX').value.trim() };
       const L = cpList().map(x => ({ ...x }));
-      if (el.dataset.k) { const c = L.find(x => x.k === el.dataset.k); if (c) Object.assign(c, v); }
+      if (el.dataset.k) { const c = L.find(x => x.k === el.dataset.k), na = (document.getElementById('cpA') || {}).value; if (c) { Object.assign(c, v); if (na && na !== c.k) c.after = na; } }
       let nk = '';
       if (!el.dataset.k) { const af = el.dataset.after || (document.getElementById('cpA') || {}).value || ''; if (!af) return X.toast('先選放在哪一頁後面'); nk = 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); L.push({ k: nk, after: af, ...v }); }
       await cpSaveAll(L); document.getElementById('dim').hidden = true;
@@ -385,7 +385,7 @@ const cpList = () => ((bpDoc('_custom') || {}).pages || []).filter(c => c && /^c
 function cpMerge() {
   if (!BK.pages0 && BK.pages) BK.pages0 = BK.pages; if (!BK.bmPages0 && BK.bm && BK.bm.pages) BK.bmPages0 = BK.bm.pages;
   if (!BK.pages0 || !BK.bmPages0) return;
-  const L = cpList(), anc = {}; L.forEach(c => anc[c.k] = c.after);
+  const FX = (BK.bm && BK.bm.cpfix) || {}, L = cpList().map(c => { const f = FX[c.k]; return f && c.after === f.from ? { ...c, after: f.after, d: f.d } : c; }), anc = {}; L.forEach(c => anc[c.k] = c.after);
   const seq = BK.pages0.map(p => p.k), chainOf = (k, a) => { let g = 0; while (k && g++ < 20) { if (anc[k] === a) return true; k = anc[k]; } return false; };
   for (const c of L) { let a = c.after, g = 0; while (a && !seq.includes(a) && anc[a] !== undefined && g++ < 20) a = anc[a]; let i = seq.indexOf(a); if (i < 0) { seq.push(c.k); continue; }
     if (/^t\d$/.test(a)) { seq.splice(i, 0, c.k); continue; } while (i + 1 < seq.length && chainOf(seq[i + 1], a)) i++; seq.splice(i + 1, 0, c.k); }
@@ -396,8 +396,8 @@ function cpMerge() {
   BK.bm.pages = seq.filter(k => bmk.has(k) || cm.has(k)).map(k => bmk.get(k) || cp(cm.get(k))).map(mt);
 }
 function cpForm(o) {   // o：{after} 新增、或 {k} 修改
-  const c = o.k ? cpList().find(x => x.k === o.k) || {} : {}, after = o.k ? c.after : (o.after || ''), pg = pageOf(after);
-  const asel = !o.k && !after ? `<div class="lab">放在哪一頁後面</div><select class="inp" id="cpA">${(BK.pages || []).map(p => `<option value="${e(p.k)}"${p.k === o.guess ? ' selected' : ''}>${p.d ? 'Day ' + p.d + '・' : ''}${e(p.t)}</option>`).join('')}</select>` : '';
+  const c = o.k ? cpList().find(x => x.k === o.k) || {} : {}, fx = o.k && ((BK.bm || {}).cpfix || {})[o.k], cur = o.k ? (fx && fx.from === c.after ? fx.after : c.after) : '', after = o.k ? cur : (o.after || ''), pg = pageOf(after);
+  const asel = o.k || !after ? `<div class="lab">放在哪一頁後面</div><select class="inp" id="cpA">${(BK.pages || []).filter(p => p.k !== o.k).map(p => `<option value="${e(p.k)}"${p.k === (o.k ? cur : o.guess) ? ' selected' : ''}>${p.d ? 'Day ' + p.d + '・' : ''}${e(p.t)}</option>`).join('')}</select>` : '';
   const dsel = `<select class="inp" id="cpD"><option value="">（不寫）</option>${Array.from({ length: 9 }, (_, i) => `<option value="${i + 1}"${String(c.d || (o.k ? '' : (pg && pg.d) || '')) === String(i + 1) ? ' selected' : ''}>Day ${i + 1}</option>`).join('')}</select>`;
   const sh = document.getElementById('sheet');
   sh.innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:17px">${o.k ? '修改這一頁' : '加一頁照片頁'}</b><button class="small" data-act="close">關閉</button></div>
