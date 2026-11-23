@@ -688,14 +688,14 @@ function pResto() {
       : own && r.status === 'in' ? `<div class="acts"><button data-act="rin" data-id="${esc(r.id)}">編輯</button><button data-act="rback" data-id="${esc(r.id)}">移回待收錄</button></div>`
       : own ? `<div class="acts"><button data-act="rback" data-id="${esc(r.id)}">移回待收錄</button><button data-act="rdel" data-id="${esc(r.id)}">刪除</button></div>`
       : r.by === me.uid && r.status === 'pending' ? `<div class="acts"><button data-act="rdel" data-id="${esc(r.id)}">撤回推薦</button></div>` : '';
-    h += `<div class="rs">${r.photo ? `<div class="ph" style="background:#ddd center/cover url('${esc(r.photo)}')"></div>` : `<div class="ph" style="background:${mInfo(r.by).color}">${esc([...(r.name || '?')][0])}</div>`}<div class="b"><div class="n">${esc(r.name)}</div>
+    h += `<div class="rs">${rphList(r).length ? `<div class="ph" style="background:#ddd center/cover url('${esc(rphList(r)[0])}')">${rphList(r).length > 1 ? `<i>${rphList(r).length}</i>` : ''}</div>` : `<div class="ph" style="background:${mInfo(r.by).color}">${esc([...(r.name || '?')][0])}</div>`}<div class="b"><div class="n">${esc(r.name)}</div>
       <div class="m">${esc(mInfo(r.by).name)} 推薦・${r.day ? fmtD(r.day) + '（' + wd(r.day) + '）' : '日期未定'}${r.meal ? ' ' + esc(r.meal) : ''}</div>${r.cuisine || r.price || rateTxt(r) ? `<div class="m">${[r.cuisine ? esc(r.cuisine) : '', r.price ? '💴 ' + esc(r.price) : '', esc(rateTxt(r))].filter(Boolean).join('・')}</div>` : ''}${r.note ? `<div class="m">${esc(r.note)}</div>` : ''}<div class="m"><a href="${esc(q)}" target="_blank" rel="noopener">📍 Google 地圖</a>${vidOk(r.video) ? `　<a href="${esc(r.video)}" target="_blank" rel="noopener">▶ 影片</a>` : ''}</div>${acts}</div></div>`;
   }
   h += `<button class="fab" data-act="radd">＋ 推薦一家</button>`;
   return h;
 }
 function openResto() {
-  delete RPH.r; RF = RF || { name: '', url: '', ll: null, day: '', meal: '', note: '', cuisine: '', price: '', video: '' };
+  RPH.r = { list: [], ch: false }; RF = RF || { name: '', url: '', ll: null, day: '', meal: '', note: '', cuisine: '', price: '', video: '' };
   const D = days(cur.trip);
   $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">推薦一家</b><button class="small" data-act="close">取消</button></div>
   <div class="lab">Google 地圖連結</div><textarea class="inp" id="rLink" rows="2" placeholder="在 Google 地圖按「分享」→ 複製連結，貼在這裡"></textarea><div class="small" id="rHint" style="margin-top:4px"></div>
@@ -710,7 +710,7 @@ function openResto() {
     $('#rHint').textContent = !o.url ? '' : o.ll ? '已讀到位置 ✓' : /goo\.gl|maps\.app/.test(o.url) ? '短網址讀不到位置，沒關係，店名填好就可以' : ''; });
 }
 function openPlace(id) {   // 主辦人收錄：確認排在哪天哪餐
-  delete RPH.p; const r = (cur.restos || []).find(x => x.id === id); if (!r) return; const D = days(cur.trip);
+  const r = (cur.restos || []).find(x => x.id === id); if (!r) return; RPH.p = { list: rphList(r), ch: false }; const D = days(cur.trip);
   $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">${r.status === 'in' ? '編輯' : '收錄'}：${esc(r.name)}</b><button class="small" data-act="close">取消</button></div>
   <div class="small" style="margin-top:6px">${esc(mInfo(r.by).name)} 推薦</div>
   <div class="lab">店名</div><input class="inp" id="pName" value="${esc(r.name)}">
@@ -724,38 +724,51 @@ function openPlace(id) {   // 主辦人收錄：確認排在哪天哪餐
 }
 /* 店家照片：推薦表單與主辦人編輯可以附一張，縮成長邊 640px、< 150 KB 存在 restos 文件的 photo（data URL）。
    正式名單的店任何人都讀得到，所以照片是公開的：只放店面、餐點，不要放人。 */
-const RPH = {};   // 表單裡目前的照片：undefined＝沒動、''＝拿掉、data URL＝新選的
-const rphHTML = (src, p) => src ? `<img src="${esc(src)}" alt=""><div class="rph-b"><button type="button" data-act="rphpick" data-p="${p}">換一張</button><button type="button" data-act="rphdel" data-p="${p}">拿掉</button></div>`
-  : `<div class="rph-two"><button type="button" class="rph-add" data-act="rphpaste" data-p="${p}">📋 貼上剛複製的圖片<small>在網頁或 Google 地圖長按照片 →「拷貝」</small></button>
-     <button type="button" class="rph-add s" data-act="rphpick" data-p="${p}">📷 從相簿選<small>&nbsp;</small></button></div>
-     <textarea class="rph-paste" data-p="${p}" rows="1" placeholder="貼不進來的話：在這裡長按 →「貼上」（電腦按 Ctrl＋V）"></textarea>
-     <div class="small" style="margin-top:4px">只放店面或餐點，不要拍到人；照片會公開在行程網站上。</div>`;
-async function rphPick(p, file) {
-  if (!file) return; const box = $('#' + p + 'PhBox'); if (box) box.innerHTML = '<div class="small" style="padding:14px">照片處理中…</div>';
-  try { const { data } = await phShrink(file, 640, 150); RPH[p] = data; if (box) box.innerHTML = rphHTML(data, p); }
-  catch (e) { if (box) box.innerHTML = rphHTML(RPH[p] || '', p); toast('讀不到這張照片，請換 JPEG 或 PNG'); }
+const RPH = {};   // 表單裡目前的照片：{list:[data URL…], ch:有沒有改過}
+const RPH_MAX = 6;   // 一家最多 6 張；每張長邊 640px、< 100 KB，整筆文件不會超過 Firestore 的 1 MB
+const rphList = r => Array.isArray(r.photos) ? r.photos.filter(Boolean) : r.photo ? [r.photo] : [];
+const rphOf = p => RPH[p] || (RPH[p] = { list: [], ch: false });
+const rphHTML = p => { const L = rphOf(p).list, full = L.length >= RPH_MAX;
+  return `${L.length ? `<div class="rph-g">${L.map((u, i) => `<div class="rph-t${i ? '' : ' c'}"><img src="${esc(u)}" alt="" data-act="rphcov" data-p="${p}" data-i="${i}">${i ? '' : '<em>封面</em>'}<button type="button" data-act="rphdel" data-p="${p}" data-i="${i}" aria-label="拿掉這張">✕</button></div>`).join('')}</div>
+    <div class="small" style="margin:4px 0 6px">${L.length} / ${RPH_MAX} 張${L.length > 1 ? '・點照片設成封面' : ''}</div>` : ''}
+  ${full ? `<div class="small">已經 ${RPH_MAX} 張了，要換的話先拿掉一張。</div>` : `<div class="rph-two"><button type="button" class="rph-add" data-act="rphpaste" data-p="${p}">📋 貼上剛複製的圖片<small>在網頁或 Google 地圖長按照片 →「拷貝」</small></button>
+     <button type="button" class="rph-add s" data-act="rphpick" data-p="${p}">📷 從相簿選<small>可以一次選多張</small></button></div>
+     <textarea class="rph-paste" data-p="${p}" rows="1" placeholder="貼不進來的話：在這裡長按 →「貼上」（電腦按 Ctrl＋V，也可以把圖片拖進來）"></textarea>`}
+  <div class="small" style="margin-top:4px">只放店面或餐點，不要拍到人；照片會公開在行程網站上。</div>`; };
+const rphDraw = p => { const box = $('#' + p + 'PhBox'); if (box) box.innerHTML = rphHTML(p); };
+async function rphPick(p, files) {
+  const R = rphOf(p), fs = [...files].filter(Boolean), room = RPH_MAX - R.list.length; if (!fs.length) return;
+  if (room <= 0) return toast('最多 ' + RPH_MAX + ' 張');
+  const box = $('#' + p + 'PhBox'); if (box) box.insertAdjacentHTML('afterbegin', '<div class="small rph-wait" style="padding:6px 0">照片處理中…</div>');
+  let bad = 0; for (const f of fs.slice(0, room)) { try { const { data } = await phShrink(f, 640, 100); R.list.push(data); R.ch = true; } catch (e) { bad++; } }
+  rphDraw(p); if (bad) toast(bad + ' 張讀不到，請換 JPEG 或 PNG'); else if (fs.length > room) toast('最多 ' + RPH_MAX + ' 張，多的沒有加');
 }
-// 貼上：剪貼簿裡的圖片（網頁或 Google 地圖長按照片「拷貝」）。表單開著時，在表單任何地方 Ctrl＋V 都收
-const clipImg = dt => { for (const it of (dt && dt.items) || []) if (it.kind === 'file' && /^image\//.test(it.type)) return it.getAsFile(); return null; };
-document.addEventListener('paste', e => { const box = $('#rPhBox') || $('#pPhBox'); if (!box || $('#dim').hidden) return;
-  const f = clipImg(e.clipboardData), p = box.id[0];
-  if (f) { e.preventDefault(); return rphPick(p, f); }
+// 貼上：剪貼簿裡的圖片（網頁或 Google 地圖長按照片「拷貝」）。表單開著時，在表單任何地方 Ctrl＋V 都收；電腦也可以拖曳圖片進照片區
+const clipImgs = dt => [...((dt && dt.items) || [])].filter(it => it.kind === 'file' && /^image\//.test(it.type)).map(it => it.getAsFile());
+const rphOpen = () => { const box = $('#rPhBox') || $('#pPhBox'); return box && !$('#dim').hidden ? box.id[0] : null; };
+document.addEventListener('paste', e => { const p = rphOpen(); if (!p) return;
+  const fs = clipImgs(e.clipboardData);
+  if (fs.length) { e.preventDefault(); return rphPick(p, fs); }
   if (e.target.classList && e.target.classList.contains('rph-paste')) { e.preventDefault();
     toast(/<img/i.test(e.clipboardData.getData('text/html') || '') ? '這個網頁的圖片沒辦法直接貼，請先存到相簿再按「從相簿選」' : '剪貼簿裡沒有圖片，請先在照片上長按 →「拷貝」'); } });
+document.addEventListener('dragover', e => { if (rphOpen() && e.target.closest && e.target.closest('.rph')) e.preventDefault(); });
+document.addEventListener('drop', e => { const p = rphOpen(); if (!p || !(e.target.closest && e.target.closest('.rph'))) return; e.preventDefault();
+  const fs = [...((e.dataTransfer && e.dataTransfer.files) || [])].filter(f => /^image\//.test(f.type)); if (fs.length) rphPick(p, fs); else toast('拖進來的不是圖片檔，請先存到電腦再拖'); });
 async function rphClip(p) {   // 按鈕讀剪貼簿（Chrome／Safari 會問一次要不要允許貼上）
-  try { const L = await navigator.clipboard.read();
-    for (const it of L) { const t = it.types.find(x => /^image\//.test(x)); if (t) return rphPick(p, new File([await it.getType(t)], 'paste.' + t.split('/')[1], { type: t })); }
+  try { const L = await navigator.clipboard.read(), fs = [];
+    for (const it of L) { const t = it.types.find(x => /^image\//.test(x)); if (t) fs.push(new File([await it.getType(t)], 'paste.' + t.split('/')[1], { type: t })); }
+    if (fs.length) return rphPick(p, fs);
     toast('剪貼簿裡沒有圖片，請先在照片上長按 →「拷貝」'); }
   catch (e) { const ta = document.querySelector('.rph-paste[data-p="' + p + '"]'); if (ta) ta.focus(); toast('這個瀏覽器不能直接讀剪貼簿，請在下面的框長按 →「貼上」'); }
 }
-document.addEventListener('change', e => { const m = /^(r|p)PhF$/.exec(e.target.id || ''); if (m) { rphPick(m[1], e.target.files[0]); e.target.value = ''; } });
+document.addEventListener('change', e => { const m = /^(r|p)PhF$/.exec(e.target.id || ''); if (m) { rphPick(m[1], e.target.files); e.target.value = ''; } });
 function restoExtra(o, p) {   // 料理類型、價格、影片網址（推薦表單與主辦人編輯共用）
   return `<div class="lab">料理類型</div><input class="inp" id="${p}Cui" value="${esc(o.cuisine || '')}" placeholder="例如：壽司、拉麵、燒肉">
   <div><div class="lab">價格（每人大約，可以填範圍）</div><div style="display:flex;gap:6px"><select class="inp" id="${p}Cur" style="flex:none;width:auto">${CURS.map(([c, l]) => `<option value="${c}" ${(o.price || '').startsWith(c) ? 'selected' : ''}>${l}</option>`).join('')}</select>
   <input class="inp" id="${p}Pri" inputmode="numeric" value="${esc((o.price || '').replace(/^(NT\$|¥)/, '').replace(/,/g, '').replace('–', '-'))}" placeholder="例如 2500 或 2000-4000"></div></div>
   <div class="row2"><div><div class="lab">Google 地圖評分</div><input class="inp" id="${p}Gr" inputmode="decimal" value="${o.grating != null ? esc(o.grating) : ''}" placeholder="例如 4.3"></div>
   <div><div class="lab">Tabelog 評分</div><input class="inp" id="${p}Tb" inputmode="decimal" value="${o.tabelog != null ? esc(o.tabelog) : ''}" placeholder="例如 3.52"></div></div>
-  <div class="lab">店家照片（選填，一張）</div><div class="rph" id="${p}PhBox">${rphHTML(o.photo, p)}</div><input type="file" id="${p}PhF" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" hidden>
+  <div class="lab">店家照片（選填，最多 ${RPH_MAX} 張）</div><div class="rph" id="${p}PhBox">${rphHTML(p)}</div><input type="file" id="${p}PhF" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple hidden>
   <div class="lab">介紹影片網址（選填）</div><input class="inp" id="${p}Vid" value="${esc(o.video || '')}" placeholder="YouTube、Instagram、TikTok 的影片連結">`;
 }
 function readExtra(p) {
@@ -768,12 +781,12 @@ function readExtra(p) {
   if (pt && !pm) return { err: '價格請填數字，或像 2000-4000 這樣的範圍' };
   const fmt = n => (+n).toLocaleString('en-US'), price = pm ? $('#' + p + 'Cur').value + fmt(pm[1]) + (pm[2] ? '–' + fmt(pm[2]) : '') : '';
   for (const x of [grating, tabelog]) if (x && x.err) return x;
-  const o = { cuisine: $('#' + p + 'Cui').value.trim().slice(0, 40), price, video, grating, tabelog }; if (RPH[p] !== undefined) o.photo = RPH[p]; return o;
+  const o = { cuisine: $('#' + p + 'Cui').value.trim().slice(0, 40), price, video, grating, tabelog }; if (rphOf(p).ch) o.photos = rphOf(p).list.slice(); return o;
 }
 async function saveResto() {
   const name = $('#rName').value.trim(); if (!name) return $('#rerr').textContent = '請填店名';
   const ex = readExtra('r'); if (ex.err) return $('#rerr').textContent = ex.err;
-  const data = { name, url: RF.url || '', ll: RF.ll || null, day: $('#rDay').value, meal: $('#rMeal').value, note: $('#rNote').value.trim(), cuisine: ex.cuisine, price: ex.price, video: ex.video, grating: ex.grating, tabelog: ex.tabelog, photo: ex.photo || '', by: me.uid, byName: me.name, status: 'pending', at: Date.now() };
+  const data = { name, url: RF.url || '', ll: RF.ll || null, day: $('#rDay').value, meal: $('#rMeal').value, note: $('#rNote').value.trim(), cuisine: ex.cuisine, price: ex.price, video: ex.video, grating: ex.grating, tabelog: ex.tabelog, photos: ex.photos || [], by: me.uid, byName: me.name, status: 'pending', at: Date.now() };
   try { await api.add(cur.id, 'restos', data); closeSheet(); RTAB = 'pending'; render(); toast('已送出，等主辦人收錄'); } catch (e) { $('#rerr').textContent = errMsg(e); }
 }
 
@@ -1000,11 +1013,12 @@ document.addEventListener('click', async ev => {
     if (a === 'rsave') return await saveResto();
     if (a === 'rphpick') return $('#' + el.dataset.p + 'PhF').click();
     if (a === 'rphpaste') return rphClip(el.dataset.p);
-    if (a === 'rphdel') { RPH[el.dataset.p] = ''; $('#' + el.dataset.p + 'PhBox').innerHTML = rphHTML('', el.dataset.p); return; }
+    if (a === 'rphdel') { const R = rphOf(el.dataset.p); R.list.splice(+el.dataset.i, 1); R.ch = true; return rphDraw(el.dataset.p); }
+    if (a === 'rphcov') { const R = rphOf(el.dataset.p), i = +el.dataset.i; if (i) { R.list.unshift(R.list.splice(i, 1)[0]); R.ch = true; rphDraw(el.dataset.p); } return; }
     if (a === 'rin') return openPlace(el.dataset.id);
     if (a === 'rinok') { const was = ((cur.restos || []).find(x => x.id === el.dataset.id) || {}).status, name = $('#pName').value.trim(), ex = readExtra('p');
       if (!name) return $('#perr').textContent = '請填店名'; if (ex.err) return $('#perr').textContent = ex.err;
-      bg(api.update(cur.id, 'restos', el.dataset.id, { status: 'in', day: $('#pDay').value, meal: $('#pMeal').value, name, note: $('#pNote').value.trim(), cuisine: ex.cuisine, price: ex.price, video: ex.video, grating: ex.grating, tabelog: ex.tabelog, ...(ex.photo !== undefined ? { photo: ex.photo } : {}), decidedAt: Date.now() })); closeSheet(); return toast(was === 'in' ? '已更新' : '已收錄'); }
+      bg(api.update(cur.id, 'restos', el.dataset.id, { status: 'in', day: $('#pDay').value, meal: $('#pMeal').value, name, note: $('#pNote').value.trim(), cuisine: ex.cuisine, price: ex.price, video: ex.video, grating: ex.grating, tabelog: ex.tabelog, ...(ex.photos ? { photos: ex.photos, photo: '' } : {}), decidedAt: Date.now() })); closeSheet(); return toast(was === 'in' ? '已更新' : '已收錄'); }
     if (a === 'rno') { bg(api.update(cur.id, 'restos', el.dataset.id, { status: 'no', decidedAt: Date.now() })); return toast('已婉拒'); }
     if (a === 'rback') { await api.update(cur.id, 'restos', el.dataset.id, { status: 'pending' }); return; }
     if (a === 'rdel') { if (!confirm('確定刪除？')) return; await api.remove(cur.id, 'restos', el.dataset.id); return; }

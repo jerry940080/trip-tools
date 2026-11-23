@@ -357,3 +357,7 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
 - **貼上照片（同日追加，使用者：從網頁複製的照片要能直接貼，不想另外找檔案）**：照片區改成兩顆按鈕＋一個貼上框：「📋 貼上剛複製的圖片」（`rphClip`：`navigator.clipboard.read()`，Chrome／Safari 會問一次允不允許）、
   「📷 從相簿選」（原本的檔案選擇）、下面一條 `.rph-paste` 文字框（讀剪貼簿被擋時在這裡長按 →「貼上」，電腦 Ctrl＋V）。表單開著時整頁的 `paste` 事件只要剪貼簿有圖片就收（不會塞進店名欄）；
   貼到的是文字或只有 `<img>` 的 HTML（有些網頁的圖片不給複製）就提示改用「存到相簿再選」。`app.js?v=20261123e`。驗證 IzuAtami-trip 對話 scratchpad `rsp/tpaste.js`（Ctrl＋V、貼文字提示、按鈕讀剪貼簿、送出存照片）。
+- **多張照片（同日追加）**：restos 改存 `photos`（data URL 陣列，最多 `RPH_MAX`＝6 張，每張長邊 640px、< 100 KB，整筆不會超過 Firestore 1 MB），第一張是封面。
+  舊資料的單張 `photo` 由 `rphList(r)` 讀成陣列；主辦人編輯存檔時改寫成 `photos` 並把 `photo` 清空。表單照片區是三欄縮圖（✕ 拿掉、點照片設成封面）＋貼上／相簿（`multiple`，一次選多張）＋貼上框，
+  電腦也可以把圖片檔拖進照片區；剪貼簿一次有多張也會全收。表單狀態 `RPH[p]={list,ch}`，沒改過照片（`ch:false`）存檔時不動 `photos`。名單縮圖右下角顯示張數。`app.js?v=20261123f`。
+  驗證：IzuAtami-trip 對話 scratchpad `rsp/tmulti.js`（10 項：多選 3 張、設封面、拿掉、Ctrl＋V 加一張、存成陣列、張數、舊單張轉換）。
