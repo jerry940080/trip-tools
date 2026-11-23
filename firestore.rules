@@ -30,10 +30,10 @@ service cloud.firestore {
       allow get: if signedIn() && (resource == null || isMember(t));
       allow list: if false;
       allow create: if isSiteOwner() && request.resource.data.owner == request.auth.uid;
-      // 成員只能改匯率；主辦人可以改其他欄位，但不能把主辦人換掉
+      // 成員只能改匯率與餐廳的「優先」（rpri，行程網站餐廳頁的 ☆）；主辦人可以改其他欄位，但不能把主辦人換掉
       allow update: if isMember(t)
         && request.resource.data.owner == resource.data.owner
-        && (isOwner(t) || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rate']));
+        && (isOwner(t) || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rate', 'rpri']));
       allow delete: if isOwner(t);
 
       // 邀請碼：只有主辦人看得到、改得到

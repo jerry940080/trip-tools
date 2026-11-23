@@ -336,3 +336,14 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
 - **使用者要做**：把新的 `firestore.rules` 整段貼到 Firebase 主控台 → Firestore Database → 規則 → 發布。
 - 驗證：Firebase 官方模擬器（`firebase emulators:exec` ＋ `@firebase/rules-unit-testing`），IzuAtami-trip 對話 scratchpad `rules/t.mjs` 8 項全過
   （陌生人、未登入不能建立；主人可以建立、不能替別人建立；建立後可寫成員；讀取規則不變）；同一組測試對舊規則會重現「陌生人能建立」。
+
+## 推薦餐廳多三個欄位、成員可以設「優先」（2026-11-23）
+使用者要求行程網站時間軸上每個用餐時段連到候選名單、可以把一家設成優先考慮，推薦時要能填料理類型、價格、影片（主辦人可編輯）。
+- **推薦表單**（`openResto`）多 料理類型 `cuisine`（文字，最多 40 字）、價格 `price`（每人大約，`PRICES` 五個級距或不確定）、介紹影片網址 `video`（要 `https://` 開頭）。
+  共用的 `restoExtra(o,前綴)`／`readExtra(前綴)`，推薦表單前綴 `r`、主辦人編輯前綴 `p`。
+- **主辦人收錄／編輯**（`openPlace`）：店名、料理、價格、影片、推薦原因、日期、餐別都能改；正式名單的按鈕由「改日期」改成「編輯」。名單列顯示「料理・💴 價格」與「▶ 影片」。
+- **優先**：行程文件 `trips/{t}` 多一個 `rpri` 欄位（map：`d5l`＝Day 5 午餐 → 候選 id；餐別代號 早餐 b、午餐 l、點心 s、晚餐 d）。由行程網站的餐廳頁 ☆ 按鈕用 Firestore REST 寫入，記帳工具本身不用。
+  `firestore.rules` 的 trips update：成員原本只能改 `rate`，改成 `hasOnly(['rate','rpri'])`；`mock.js` 的 `updateTrip` 同步。**使用者要把新的 rules 貼到 Firebase 主控台**。
+- `index.html` 的 `app.js?v=` 改 `20261123a`。
+- 驗證：IzuAtami-trip 對話 scratchpad `rules/t2.mjs`（Firebase 模擬器 8 項：成員可設／取消優先、仍可改匯率、不能改標題與主辦人、非成員不能設、主辦人可設、陌生人仍不能建立行程）、
+  `rules/t3.mjs`（用網站實際送的 REST 請求：PATCH `updateMask.fieldPaths=rpri.d5l`、取消、非成員 403、其他欄位不受影響）、`rsp/tt.js`（mock：推薦表單三欄、影片網址驗證、主辦人編輯後欄位更新、「編輯」按鈕）。

@@ -663,6 +663,8 @@ function saveBudget() { readBudget(); const f = B.f; if (!f.name.trim()) return 
 
 /* 餐廳 */
 let RTAB = 'pending', RF = null;
+const PRICES = ['¥1,000 以下', '¥1,000–2,000', '¥2,000–4,000', '¥4,000–8,000', '¥8,000 以上'];   // 推薦餐廳的價格（每人大約）
+const vidOk = u => /^https:\/\/[^\s"<>]+$/.test(u || '');
 function parseG(txt) { // 從貼上的 Google 地圖連結讀店名與座標（和行程網站的口袋名單同一套規則）
   const o = {}; const u = (txt || '').match(/https?:\/\/\S+/); if (u) o.url = u[0].replace(/[)）\]」]+$/, '');
   const before = u ? txt.slice(0, u.index).trim() : (txt || '').trim(); if (before && !/^https?:/.test(before)) o.name = before.split(/\n/)[0].trim().replace(/^[「『]|[」』]$/g, '');
@@ -682,23 +684,24 @@ function pResto() {
   for (const r of L) {
     const q = r.url || 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(r.name);
     const acts = own && r.status === 'pending' ? `<div class="acts"><button class="y" data-act="rin" data-id="${esc(r.id)}">收錄</button><button data-act="rno" data-id="${esc(r.id)}">婉拒</button></div>`
-      : own && r.status === 'in' ? `<div class="acts"><button data-act="rin" data-id="${esc(r.id)}">改日期</button><button data-act="rback" data-id="${esc(r.id)}">移回待收錄</button></div>`
+      : own && r.status === 'in' ? `<div class="acts"><button data-act="rin" data-id="${esc(r.id)}">編輯</button><button data-act="rback" data-id="${esc(r.id)}">移回待收錄</button></div>`
       : own ? `<div class="acts"><button data-act="rback" data-id="${esc(r.id)}">移回待收錄</button><button data-act="rdel" data-id="${esc(r.id)}">刪除</button></div>`
       : r.by === me.uid && r.status === 'pending' ? `<div class="acts"><button data-act="rdel" data-id="${esc(r.id)}">撤回推薦</button></div>` : '';
     h += `<div class="rs"><div class="ph" style="background:${mInfo(r.by).color}">${esc([...(r.name || '?')][0])}</div><div class="b"><div class="n">${esc(r.name)}</div>
-      <div class="m">${esc(mInfo(r.by).name)} 推薦・${r.day ? fmtD(r.day) + '（' + wd(r.day) + '）' : '日期未定'}${r.meal ? ' ' + esc(r.meal) : ''}</div>${r.note ? `<div class="m">${esc(r.note)}</div>` : ''}<div class="m"><a href="${esc(q)}" target="_blank" rel="noopener">📍 Google 地圖</a></div>${acts}</div></div>`;
+      <div class="m">${esc(mInfo(r.by).name)} 推薦・${r.day ? fmtD(r.day) + '（' + wd(r.day) + '）' : '日期未定'}${r.meal ? ' ' + esc(r.meal) : ''}</div>${r.cuisine || r.price ? `<div class="m">${[r.cuisine ? esc(r.cuisine) : '', r.price ? '💴 ' + esc(r.price) : ''].filter(Boolean).join('・')}</div>` : ''}${r.note ? `<div class="m">${esc(r.note)}</div>` : ''}<div class="m"><a href="${esc(q)}" target="_blank" rel="noopener">📍 Google 地圖</a>${vidOk(r.video) ? `　<a href="${esc(r.video)}" target="_blank" rel="noopener">▶ 影片</a>` : ''}</div>${acts}</div></div>`;
   }
   h += `<button class="fab" data-act="radd">＋ 推薦一家</button>`;
   return h;
 }
 function openResto() {
-  RF = RF || { name: '', url: '', ll: null, day: '', meal: '', note: '' };
+  RF = RF || { name: '', url: '', ll: null, day: '', meal: '', note: '', cuisine: '', price: '', video: '' };
   const D = days(cur.trip);
   $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">推薦一家</b><button class="small" data-act="close">取消</button></div>
   <div class="lab">Google 地圖連結</div><textarea class="inp" id="rLink" rows="2" placeholder="在 Google 地圖按「分享」→ 複製連結，貼在這裡"></textarea><div class="small" id="rHint" style="margin-top:4px"></div>
   <div class="lab">店名</div><input class="inp" id="rName" value="${esc(RF.name)}" placeholder="必填">
   <div class="row2"><div><div class="lab">哪一天</div><select class="inp" id="rDay"><option value="">未定</option>${D.map(d => `<option value="${d}" ${RF.day === d ? 'selected' : ''}>${fmtD(d)}（${wd(d)}）</option>`).join('')}</select></div>
   <div><div class="lab">哪一餐</div><select class="inp" id="rMeal"><option value="">未定</option>${MEALS.map(m => `<option ${RF.meal === m ? 'selected' : ''}>${m}</option>`).join('')}</select></div></div>
+  ${restoExtra(RF, 'r')}
   <div class="lab">為什麼推薦（選填）</div><input class="inp" id="rNote" value="${esc(RF.note)}" placeholder="例如：金目鯛煮付很有名、要排隊">
   <div class="err" id="rerr"></div><button class="btn" data-act="rsave">送出推薦</button>`;
   $('#dim').hidden = false;
@@ -707,17 +710,31 @@ function openResto() {
 }
 function openPlace(id) {   // 主辦人收錄：確認排在哪天哪餐
   const r = (cur.restos || []).find(x => x.id === id); if (!r) return; const D = days(cur.trip);
-  $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">${r.status === 'in' ? '改日期' : '收錄'}：${esc(r.name)}</b><button class="small" data-act="close">取消</button></div>
-  <div class="small" style="margin-top:6px">${esc(mInfo(r.by).name)} 推薦${r.note ? '：' + esc(r.note) : ''}</div>
+  $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">${r.status === 'in' ? '編輯' : '收錄'}：${esc(r.name)}</b><button class="small" data-act="close">取消</button></div>
+  <div class="small" style="margin-top:6px">${esc(mInfo(r.by).name)} 推薦</div>
+  <div class="lab">店名</div><input class="inp" id="pName" value="${esc(r.name)}">
+  ${restoExtra(r, 'p')}
+  <div class="lab">推薦原因</div><input class="inp" id="pNote" value="${esc(r.note || '')}">
   <div class="row2"><div><div class="lab">排進哪一天</div><select class="inp" id="pDay"><option value="">未定</option>${D.map(d => `<option value="${d}" ${r.day === d ? 'selected' : ''}>${fmtD(d)}（${wd(d)}）</option>`).join('')}</select></div>
   <div><div class="lab">哪一餐</div><select class="inp" id="pMeal">${MEALS.map(m => `<option ${(r.meal || '晚餐') === m ? 'selected' : ''}>${m}</option>`).join('')}</select></div></div>
   <div class="small" style="margin-top:8px">收錄後會出現在行程網站的「餐廳」頁，標「家人推薦」。</div>
-  <button class="btn" data-act="rinok" data-id="${esc(id)}">${r.status === 'in' ? '存檔' : '收錄進正式名單'}</button>`;
+  <div class="err" id="perr"></div><button class="btn" data-act="rinok" data-id="${esc(id)}">${r.status === 'in' ? '存檔' : '收錄進正式名單'}</button>`;
   $('#dim').hidden = false;
+}
+function restoExtra(o, p) {   // 料理類型、價格、影片網址（推薦表單與主辦人編輯共用）
+  return `<div class="row2"><div><div class="lab">料理類型</div><input class="inp" id="${p}Cui" value="${esc(o.cuisine || '')}" placeholder="例如：壽司、拉麵、燒肉"></div>
+  <div><div class="lab">價格（每人大約）</div><select class="inp" id="${p}Pri"><option value="">不確定</option>${PRICES.map(x => `<option ${o.price === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div></div>
+  <div class="lab">介紹影片網址（選填）</div><input class="inp" id="${p}Vid" value="${esc(o.video || '')}" placeholder="YouTube、Instagram、TikTok 的影片連結">`;
+}
+function readExtra(p) {
+  const video = $('#' + p + 'Vid').value.trim();
+  if (video && !vidOk(video)) return { err: '影片網址要是 https:// 開頭的完整連結' };
+  return { cuisine: $('#' + p + 'Cui').value.trim().slice(0, 40), price: $('#' + p + 'Pri').value, video };
 }
 async function saveResto() {
   const name = $('#rName').value.trim(); if (!name) return $('#rerr').textContent = '請填店名';
-  const data = { name, url: RF.url || '', ll: RF.ll || null, day: $('#rDay').value, meal: $('#rMeal').value, note: $('#rNote').value.trim(), by: me.uid, byName: me.name, status: 'pending', at: Date.now() };
+  const ex = readExtra('r'); if (ex.err) return $('#rerr').textContent = ex.err;
+  const data = { name, url: RF.url || '', ll: RF.ll || null, day: $('#rDay').value, meal: $('#rMeal').value, note: $('#rNote').value.trim(), cuisine: ex.cuisine, price: ex.price, video: ex.video, by: me.uid, byName: me.name, status: 'pending', at: Date.now() };
   try { await api.add(cur.id, 'restos', data); closeSheet(); RTAB = 'pending'; render(); toast('已送出，等主辦人收錄'); } catch (e) { $('#rerr').textContent = errMsg(e); }
 }
 
@@ -943,7 +960,9 @@ document.addEventListener('click', async ev => {
     if (a === 'radd') { RF = null; return openResto(); }
     if (a === 'rsave') return await saveResto();
     if (a === 'rin') return openPlace(el.dataset.id);
-    if (a === 'rinok') { const was = ((cur.restos || []).find(x => x.id === el.dataset.id) || {}).status; bg(api.update(cur.id, 'restos', el.dataset.id, { status: 'in', day: $('#pDay').value, meal: $('#pMeal').value, decidedAt: Date.now() })); closeSheet(); return toast(was === 'in' ? '已更新' : '已收錄'); }
+    if (a === 'rinok') { const was = ((cur.restos || []).find(x => x.id === el.dataset.id) || {}).status, name = $('#pName').value.trim(), ex = readExtra('p');
+      if (!name) return $('#perr').textContent = '請填店名'; if (ex.err) return $('#perr').textContent = ex.err;
+      bg(api.update(cur.id, 'restos', el.dataset.id, { status: 'in', day: $('#pDay').value, meal: $('#pMeal').value, name, note: $('#pNote').value.trim(), cuisine: ex.cuisine, price: ex.price, video: ex.video, decidedAt: Date.now() })); closeSheet(); return toast(was === 'in' ? '已更新' : '已收錄'); }
     if (a === 'rno') { bg(api.update(cur.id, 'restos', el.dataset.id, { status: 'no', decidedAt: Date.now() })); return toast('已婉拒'); }
     if (a === 'rback') { await api.update(cur.id, 'restos', el.dataset.id, { status: 'pending' }); return; }
     if (a === 'rdel') { if (!confirm('確定刪除？')) return; await api.remove(cur.id, 'restos', el.dataset.id); return; }

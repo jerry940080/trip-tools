@@ -37,7 +37,7 @@ export default {
 
   async getTrip(id) { if (!T(id)) return null; if (!isMember(id)) throw deny(); return { id, ...T(id).data }; },
   async createTrip(id, data) { if (T(id)) throw deny(); S.trips[id] = { data, members: {}, expenses: {}, settles: {}, restos: {}, budget: {}, photos: {}, pages: {}, media: {}, notes: {}, bookpages: {}, chunks: {}, private: {} }; save(); },
-  async updateTrip(id, patch) { if (!isMember(id)) throw deny(); if (!isOwner(id) && Object.keys(patch).some(k => k !== 'rate')) throw deny(); Object.assign(T(id).data, patch); save(); },
+  async updateTrip(id, patch) { if (!isMember(id)) throw deny(); if (!isOwner(id) && Object.keys(patch).some(k => k !== 'rate' && k !== 'rpri')) throw deny(); Object.assign(T(id).data, patch); save(); },
   watchTrip(id, cb, err) { const f = () => { if (!T(id)) return cb(null); isMember(id) ? cb({ id, ...T(id).data }) : err && err(deny()); }; subs.add(f); setTimeout(f, 0); return () => subs.delete(f); },
 
   async getInvite(id) { if (!isOwner(id)) throw deny(); return T(id).private.invite || null; },
