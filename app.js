@@ -688,14 +688,14 @@ function pResto() {
       : own && r.status === 'in' ? `<div class="acts"><button data-act="rin" data-id="${esc(r.id)}">編輯</button><button data-act="rback" data-id="${esc(r.id)}">移回待收錄</button></div>`
       : own ? `<div class="acts"><button data-act="rback" data-id="${esc(r.id)}">移回待收錄</button><button data-act="rdel" data-id="${esc(r.id)}">刪除</button></div>`
       : r.by === me.uid && r.status === 'pending' ? `<div class="acts"><button data-act="rdel" data-id="${esc(r.id)}">撤回推薦</button></div>` : '';
-    h += `<div class="rs"><div class="ph" style="background:${mInfo(r.by).color}">${esc([...(r.name || '?')][0])}</div><div class="b"><div class="n">${esc(r.name)}</div>
+    h += `<div class="rs">${r.photo ? `<div class="ph" style="background:#ddd center/cover url('${esc(r.photo)}')"></div>` : `<div class="ph" style="background:${mInfo(r.by).color}">${esc([...(r.name || '?')][0])}</div>`}<div class="b"><div class="n">${esc(r.name)}</div>
       <div class="m">${esc(mInfo(r.by).name)} 推薦・${r.day ? fmtD(r.day) + '（' + wd(r.day) + '）' : '日期未定'}${r.meal ? ' ' + esc(r.meal) : ''}</div>${r.cuisine || r.price || rateTxt(r) ? `<div class="m">${[r.cuisine ? esc(r.cuisine) : '', r.price ? '💴 ' + esc(r.price) : '', esc(rateTxt(r))].filter(Boolean).join('・')}</div>` : ''}${r.note ? `<div class="m">${esc(r.note)}</div>` : ''}<div class="m"><a href="${esc(q)}" target="_blank" rel="noopener">📍 Google 地圖</a>${vidOk(r.video) ? `　<a href="${esc(r.video)}" target="_blank" rel="noopener">▶ 影片</a>` : ''}</div>${acts}</div></div>`;
   }
   h += `<button class="fab" data-act="radd">＋ 推薦一家</button>`;
   return h;
 }
 function openResto() {
-  RF = RF || { name: '', url: '', ll: null, day: '', meal: '', note: '', cuisine: '', price: '', video: '' };
+  delete RPH.r; RF = RF || { name: '', url: '', ll: null, day: '', meal: '', note: '', cuisine: '', price: '', video: '' };
   const D = days(cur.trip);
   $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">推薦一家</b><button class="small" data-act="close">取消</button></div>
   <div class="lab">Google 地圖連結</div><textarea class="inp" id="rLink" rows="2" placeholder="在 Google 地圖按「分享」→ 複製連結，貼在這裡"></textarea><div class="small" id="rHint" style="margin-top:4px"></div>
@@ -710,7 +710,7 @@ function openResto() {
     $('#rHint').textContent = !o.url ? '' : o.ll ? '已讀到位置 ✓' : /goo\.gl|maps\.app/.test(o.url) ? '短網址讀不到位置，沒關係，店名填好就可以' : ''; });
 }
 function openPlace(id) {   // 主辦人收錄：確認排在哪天哪餐
-  const r = (cur.restos || []).find(x => x.id === id); if (!r) return; const D = days(cur.trip);
+  delete RPH.p; const r = (cur.restos || []).find(x => x.id === id); if (!r) return; const D = days(cur.trip);
   $('#sheet').innerHTML = `<div class="grab"></div><div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">${r.status === 'in' ? '編輯' : '收錄'}：${esc(r.name)}</b><button class="small" data-act="close">取消</button></div>
   <div class="small" style="margin-top:6px">${esc(mInfo(r.by).name)} 推薦</div>
   <div class="lab">店名</div><input class="inp" id="pName" value="${esc(r.name)}">
@@ -722,12 +722,24 @@ function openPlace(id) {   // 主辦人收錄：確認排在哪天哪餐
   <div class="err" id="perr"></div><button class="btn" data-act="rinok" data-id="${esc(id)}">${r.status === 'in' ? '存檔' : '收錄進正式名單'}</button>`;
   $('#dim').hidden = false;
 }
+/* 店家照片：推薦表單與主辦人編輯可以附一張，縮成長邊 640px、< 150 KB 存在 restos 文件的 photo（data URL）。
+   正式名單的店任何人都讀得到，所以照片是公開的：只放店面、餐點，不要放人。 */
+const RPH = {};   // 表單裡目前的照片：undefined＝沒動、''＝拿掉、data URL＝新選的
+const rphHTML = (src, p) => src ? `<img src="${esc(src)}" alt=""><div class="rph-b"><button type="button" data-act="rphpick" data-p="${p}">換一張</button><button type="button" data-act="rphdel" data-p="${p}">拿掉</button></div>`
+  : `<button type="button" class="rph-add" data-act="rphpick" data-p="${p}">📷 選一張照片<small>店面或招牌菜，不要拍到人</small></button>`;
+async function rphPick(p, file) {
+  if (!file) return; const box = $('#' + p + 'PhBox'); if (box) box.innerHTML = '<div class="small" style="padding:14px">照片處理中…</div>';
+  try { const { data } = await phShrink(file, 640, 150); RPH[p] = data; if (box) box.innerHTML = rphHTML(data, p); }
+  catch (e) { if (box) box.innerHTML = rphHTML(RPH[p] || '', p); toast('讀不到這張照片，請換 JPEG 或 PNG'); }
+}
+document.addEventListener('change', e => { const m = /^(r|p)PhF$/.exec(e.target.id || ''); if (m) { rphPick(m[1], e.target.files[0]); e.target.value = ''; } });
 function restoExtra(o, p) {   // 料理類型、價格、影片網址（推薦表單與主辦人編輯共用）
   return `<div class="lab">料理類型</div><input class="inp" id="${p}Cui" value="${esc(o.cuisine || '')}" placeholder="例如：壽司、拉麵、燒肉">
   <div><div class="lab">價格（每人大約，可以填範圍）</div><div style="display:flex;gap:6px"><select class="inp" id="${p}Cur" style="flex:none;width:auto">${CURS.map(([c, l]) => `<option value="${c}" ${(o.price || '').startsWith(c) ? 'selected' : ''}>${l}</option>`).join('')}</select>
   <input class="inp" id="${p}Pri" inputmode="numeric" value="${esc((o.price || '').replace(/^(NT\$|¥)/, '').replace(/,/g, '').replace('–', '-'))}" placeholder="例如 2500 或 2000-4000"></div></div>
   <div class="row2"><div><div class="lab">Google 地圖評分</div><input class="inp" id="${p}Gr" inputmode="decimal" value="${o.grating != null ? esc(o.grating) : ''}" placeholder="例如 4.3"></div>
   <div><div class="lab">Tabelog 評分</div><input class="inp" id="${p}Tb" inputmode="decimal" value="${o.tabelog != null ? esc(o.tabelog) : ''}" placeholder="例如 3.52"></div></div>
+  <div class="lab">店家照片（選填，一張）</div><div class="rph" id="${p}PhBox">${rphHTML(o.photo, p)}</div><input type="file" id="${p}PhF" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" hidden>
   <div class="lab">介紹影片網址（選填）</div><input class="inp" id="${p}Vid" value="${esc(o.video || '')}" placeholder="YouTube、Instagram、TikTok 的影片連結">`;
 }
 function readExtra(p) {
@@ -740,12 +752,12 @@ function readExtra(p) {
   if (pt && !pm) return { err: '價格請填數字，或像 2000-4000 這樣的範圍' };
   const fmt = n => (+n).toLocaleString('en-US'), price = pm ? $('#' + p + 'Cur').value + fmt(pm[1]) + (pm[2] ? '–' + fmt(pm[2]) : '') : '';
   for (const x of [grating, tabelog]) if (x && x.err) return x;
-  return { cuisine: $('#' + p + 'Cui').value.trim().slice(0, 40), price, video, grating, tabelog };
+  const o = { cuisine: $('#' + p + 'Cui').value.trim().slice(0, 40), price, video, grating, tabelog }; if (RPH[p] !== undefined) o.photo = RPH[p]; return o;
 }
 async function saveResto() {
   const name = $('#rName').value.trim(); if (!name) return $('#rerr').textContent = '請填店名';
   const ex = readExtra('r'); if (ex.err) return $('#rerr').textContent = ex.err;
-  const data = { name, url: RF.url || '', ll: RF.ll || null, day: $('#rDay').value, meal: $('#rMeal').value, note: $('#rNote').value.trim(), cuisine: ex.cuisine, price: ex.price, video: ex.video, grating: ex.grating, tabelog: ex.tabelog, by: me.uid, byName: me.name, status: 'pending', at: Date.now() };
+  const data = { name, url: RF.url || '', ll: RF.ll || null, day: $('#rDay').value, meal: $('#rMeal').value, note: $('#rNote').value.trim(), cuisine: ex.cuisine, price: ex.price, video: ex.video, grating: ex.grating, tabelog: ex.tabelog, photo: ex.photo || '', by: me.uid, byName: me.name, status: 'pending', at: Date.now() };
   try { await api.add(cur.id, 'restos', data); closeSheet(); RTAB = 'pending'; render(); toast('已送出，等主辦人收錄'); } catch (e) { $('#rerr').textContent = errMsg(e); }
 }
 
@@ -811,14 +823,14 @@ function pPhoto() {
   return h + cols(A, B);
 }
 // 縮圖：長邊 1000px、WebP q0.8；超過 700 KB 再降畫質（Firestore 一筆 1 MiB）
-async function phShrink(file) {
+async function phShrink(file, MX = 1000, CAP = 700) {
   const bmp = await createImageBitmap(file).catch(() => null);
   let img = bmp; if (!img) { img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = URL.createObjectURL(file); }); }
-  const w0 = img.width, h0 = img.height, k = Math.min(1, 1000 / Math.max(w0, h0)), w = Math.round(w0 * k), h = Math.round(h0 * k);
+  const w0 = img.width, h0 = img.height, k = Math.min(1, MX / Math.max(w0, h0)), w = Math.round(w0 * k), h = Math.round(h0 * k);
   const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(img, 0, 0, w, h);
   let q = .8, data = cv.toDataURL('image/webp', q);
   if (!/^data:image\/webp/.test(data)) data = cv.toDataURL('image/jpeg', q);   // 舊瀏覽器不支援 WebP 輸出
-  while (data.length > 700 * 1024 * 4 / 3 && q > .4) { q -= .1; data = cv.toDataURL(data.slice(5, 15) === 'image/webp' ? 'image/webp' : 'image/jpeg', q); }
+  while (data.length > CAP * 1024 * 4 / 3 && q > .4) { q -= .1; data = cv.toDataURL(data.slice(5, 15) === 'image/webp' ? 'image/webp' : 'image/jpeg', q); }
   return { data, w, h };
 }
 (function phDrag() {
@@ -970,10 +982,12 @@ document.addEventListener('click', async ev => {
     if (a === 'rtab') { RTAB = el.dataset.k; return render(); }
     if (a === 'radd') { RF = null; return openResto(); }
     if (a === 'rsave') return await saveResto();
+    if (a === 'rphpick') return $('#' + el.dataset.p + 'PhF').click();
+    if (a === 'rphdel') { RPH[el.dataset.p] = ''; $('#' + el.dataset.p + 'PhBox').innerHTML = rphHTML('', el.dataset.p); return; }
     if (a === 'rin') return openPlace(el.dataset.id);
     if (a === 'rinok') { const was = ((cur.restos || []).find(x => x.id === el.dataset.id) || {}).status, name = $('#pName').value.trim(), ex = readExtra('p');
       if (!name) return $('#perr').textContent = '請填店名'; if (ex.err) return $('#perr').textContent = ex.err;
-      bg(api.update(cur.id, 'restos', el.dataset.id, { status: 'in', day: $('#pDay').value, meal: $('#pMeal').value, name, note: $('#pNote').value.trim(), cuisine: ex.cuisine, price: ex.price, video: ex.video, grating: ex.grating, tabelog: ex.tabelog, decidedAt: Date.now() })); closeSheet(); return toast(was === 'in' ? '已更新' : '已收錄'); }
+      bg(api.update(cur.id, 'restos', el.dataset.id, { status: 'in', day: $('#pDay').value, meal: $('#pMeal').value, name, note: $('#pNote').value.trim(), cuisine: ex.cuisine, price: ex.price, video: ex.video, grating: ex.grating, tabelog: ex.tabelog, ...(ex.photo !== undefined ? { photo: ex.photo } : {}), decidedAt: Date.now() })); closeSheet(); return toast(was === 'in' ? '已更新' : '已收錄'); }
     if (a === 'rno') { bg(api.update(cur.id, 'restos', el.dataset.id, { status: 'no', decidedAt: Date.now() })); return toast('已婉拒'); }
     if (a === 'rback') { await api.update(cur.id, 'restos', el.dataset.id, { status: 'pending' }); return; }
     if (a === 'rdel') { if (!confirm('確定刪除？')) return; await api.remove(cur.id, 'restos', el.dataset.id); return; }
