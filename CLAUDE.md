@@ -347,3 +347,6 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
 - `index.html` 的 `app.js?v=` 改 `20261123a`。
 - 驗證：IzuAtami-trip 對話 scratchpad `rules/t2.mjs`（Firebase 模擬器 8 項：成員可設／取消優先、仍可改匯率、不能改標題與主辦人、非成員不能設、主辦人可設、陌生人仍不能建立行程）、
   `rules/t3.mjs`（用網站實際送的 REST 請求：PATCH `updateMask.fieldPaths=rpri.d5l`、取消、非成員 403、其他欄位不受影響）、`rsp/tt.js`（mock：推薦表單三欄、影片網址驗證、主辦人編輯後欄位更新、「編輯」按鈕）。
+- **評分與價格（同日追加）**：推薦表單與主辦人編輯多 `grating`（Google 地圖評分，0–5、四捨五入到 0.1）、`tabelog`（Tabelog 評分，0–5、到 0.01）。
+  價格改成自己填：幣別選單（`CURS`：預設 ¥ 日圓、可選 NT$ 台幣）＋數字或範圍（`2000` 或 `2000-4000`），存成格式化字串（`¥2,000–4,000`），編輯時拆回原本的幣別與數字；亂填會擋下。
+  名單顯示「料理 · 價格 · ⭐ Google 4.3 · Tabelog 3.52」。Google 地圖照片沒辦法從分享連結直接抓（要 Places API 並綁帳單），目前沒做；行程網站改用推薦影片的 YouTube 封面當縮圖。

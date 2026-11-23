@@ -663,8 +663,9 @@ function saveBudget() { readBudget(); const f = B.f; if (!f.name.trim()) return 
 
 /* 餐廳 */
 let RTAB = 'pending', RF = null;
-const PRICES = ['¥1,000 以下', '¥1,000–2,000', '¥2,000–4,000', '¥4,000–8,000', '¥8,000 以上'];   // 推薦餐廳的價格（每人大約）
+const CURS = [['¥', '日圓'], ['NT$', '台幣']];   // 推薦餐廳的價格：自己填，預設日圓；存成「¥2,000–4,000」這種文字
 const vidOk = u => /^https:\/\/[^\s"<>]+$/.test(u || '');
+const rateTxt = r => [r.grating != null ? '⭐ Google ' + r.grating : '', r.tabelog != null ? 'Tabelog ' + r.tabelog : ''].filter(Boolean).join('・');
 function parseG(txt) { // 從貼上的 Google 地圖連結讀店名與座標（和行程網站的口袋名單同一套規則）
   const o = {}; const u = (txt || '').match(/https?:\/\/\S+/); if (u) o.url = u[0].replace(/[)）\]」]+$/, '');
   const before = u ? txt.slice(0, u.index).trim() : (txt || '').trim(); if (before && !/^https?:/.test(before)) o.name = before.split(/\n/)[0].trim().replace(/^[「『]|[」』]$/g, '');
@@ -688,7 +689,7 @@ function pResto() {
       : own ? `<div class="acts"><button data-act="rback" data-id="${esc(r.id)}">移回待收錄</button><button data-act="rdel" data-id="${esc(r.id)}">刪除</button></div>`
       : r.by === me.uid && r.status === 'pending' ? `<div class="acts"><button data-act="rdel" data-id="${esc(r.id)}">撤回推薦</button></div>` : '';
     h += `<div class="rs"><div class="ph" style="background:${mInfo(r.by).color}">${esc([...(r.name || '?')][0])}</div><div class="b"><div class="n">${esc(r.name)}</div>
-      <div class="m">${esc(mInfo(r.by).name)} 推薦・${r.day ? fmtD(r.day) + '（' + wd(r.day) + '）' : '日期未定'}${r.meal ? ' ' + esc(r.meal) : ''}</div>${r.cuisine || r.price ? `<div class="m">${[r.cuisine ? esc(r.cuisine) : '', r.price ? '💴 ' + esc(r.price) : ''].filter(Boolean).join('・')}</div>` : ''}${r.note ? `<div class="m">${esc(r.note)}</div>` : ''}<div class="m"><a href="${esc(q)}" target="_blank" rel="noopener">📍 Google 地圖</a>${vidOk(r.video) ? `　<a href="${esc(r.video)}" target="_blank" rel="noopener">▶ 影片</a>` : ''}</div>${acts}</div></div>`;
+      <div class="m">${esc(mInfo(r.by).name)} 推薦・${r.day ? fmtD(r.day) + '（' + wd(r.day) + '）' : '日期未定'}${r.meal ? ' ' + esc(r.meal) : ''}</div>${r.cuisine || r.price || rateTxt(r) ? `<div class="m">${[r.cuisine ? esc(r.cuisine) : '', r.price ? '💴 ' + esc(r.price) : '', esc(rateTxt(r))].filter(Boolean).join('・')}</div>` : ''}${r.note ? `<div class="m">${esc(r.note)}</div>` : ''}<div class="m"><a href="${esc(q)}" target="_blank" rel="noopener">📍 Google 地圖</a>${vidOk(r.video) ? `　<a href="${esc(r.video)}" target="_blank" rel="noopener">▶ 影片</a>` : ''}</div>${acts}</div></div>`;
   }
   h += `<button class="fab" data-act="radd">＋ 推薦一家</button>`;
   return h;
@@ -722,19 +723,29 @@ function openPlace(id) {   // 主辦人收錄：確認排在哪天哪餐
   $('#dim').hidden = false;
 }
 function restoExtra(o, p) {   // 料理類型、價格、影片網址（推薦表單與主辦人編輯共用）
-  return `<div class="row2"><div><div class="lab">料理類型</div><input class="inp" id="${p}Cui" value="${esc(o.cuisine || '')}" placeholder="例如：壽司、拉麵、燒肉"></div>
-  <div><div class="lab">價格（每人大約）</div><select class="inp" id="${p}Pri"><option value="">不確定</option>${PRICES.map(x => `<option ${o.price === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div></div>
+  return `<div class="lab">料理類型</div><input class="inp" id="${p}Cui" value="${esc(o.cuisine || '')}" placeholder="例如：壽司、拉麵、燒肉">
+  <div><div class="lab">價格（每人大約，可以填範圍）</div><div style="display:flex;gap:6px"><select class="inp" id="${p}Cur" style="flex:none;width:auto">${CURS.map(([c, l]) => `<option value="${c}" ${(o.price || '').startsWith(c) ? 'selected' : ''}>${l}</option>`).join('')}</select>
+  <input class="inp" id="${p}Pri" inputmode="numeric" value="${esc((o.price || '').replace(/^(NT\$|¥)/, '').replace(/,/g, '').replace('–', '-'))}" placeholder="例如 2500 或 2000-4000"></div></div>
+  <div class="row2"><div><div class="lab">Google 地圖評分</div><input class="inp" id="${p}Gr" inputmode="decimal" value="${o.grating != null ? esc(o.grating) : ''}" placeholder="例如 4.3"></div>
+  <div><div class="lab">Tabelog 評分</div><input class="inp" id="${p}Tb" inputmode="decimal" value="${o.tabelog != null ? esc(o.tabelog) : ''}" placeholder="例如 3.52"></div></div>
   <div class="lab">介紹影片網址（選填）</div><input class="inp" id="${p}Vid" value="${esc(o.video || '')}" placeholder="YouTube、Instagram、TikTok 的影片連結">`;
 }
 function readExtra(p) {
   const video = $('#' + p + 'Vid').value.trim();
   if (video && !vidOk(video)) return { err: '影片網址要是 https:// 開頭的完整連結' };
-  return { cuisine: $('#' + p + 'Cui').value.trim().slice(0, 40), price: $('#' + p + 'Pri').value, video };
+  const num = (id, lab, dp) => { const t = $('#' + p + id).value.trim().replace('，', '.'); if (!t) return null; const n = +t;
+    return isFinite(n) && n >= 0 && n <= 5 ? Math.round(n * 10 ** dp) / 10 ** dp : { err: lab + '評分要是 0 到 5 的數字' }; };
+  const grating = num('Gr', 'Google 地圖', 1), tabelog = num('Tb', 'Tabelog ', 2);
+  const pt = $('#' + p + 'Pri').value.trim().replace(/[,，\s]/g, '').replace(/[〜~～－—–]/g, '-'), pm = /^(\d{1,7})(?:-(\d{1,7}))?$/.exec(pt);
+  if (pt && !pm) return { err: '價格請填數字，或像 2000-4000 這樣的範圍' };
+  const fmt = n => (+n).toLocaleString('en-US'), price = pm ? $('#' + p + 'Cur').value + fmt(pm[1]) + (pm[2] ? '–' + fmt(pm[2]) : '') : '';
+  for (const x of [grating, tabelog]) if (x && x.err) return x;
+  return { cuisine: $('#' + p + 'Cui').value.trim().slice(0, 40), price, video, grating, tabelog };
 }
 async function saveResto() {
   const name = $('#rName').value.trim(); if (!name) return $('#rerr').textContent = '請填店名';
   const ex = readExtra('r'); if (ex.err) return $('#rerr').textContent = ex.err;
-  const data = { name, url: RF.url || '', ll: RF.ll || null, day: $('#rDay').value, meal: $('#rMeal').value, note: $('#rNote').value.trim(), cuisine: ex.cuisine, price: ex.price, video: ex.video, by: me.uid, byName: me.name, status: 'pending', at: Date.now() };
+  const data = { name, url: RF.url || '', ll: RF.ll || null, day: $('#rDay').value, meal: $('#rMeal').value, note: $('#rNote').value.trim(), cuisine: ex.cuisine, price: ex.price, video: ex.video, grating: ex.grating, tabelog: ex.tabelog, by: me.uid, byName: me.name, status: 'pending', at: Date.now() };
   try { await api.add(cur.id, 'restos', data); closeSheet(); RTAB = 'pending'; render(); toast('已送出，等主辦人收錄'); } catch (e) { $('#rerr').textContent = errMsg(e); }
 }
 
@@ -962,7 +973,7 @@ document.addEventListener('click', async ev => {
     if (a === 'rin') return openPlace(el.dataset.id);
     if (a === 'rinok') { const was = ((cur.restos || []).find(x => x.id === el.dataset.id) || {}).status, name = $('#pName').value.trim(), ex = readExtra('p');
       if (!name) return $('#perr').textContent = '請填店名'; if (ex.err) return $('#perr').textContent = ex.err;
-      bg(api.update(cur.id, 'restos', el.dataset.id, { status: 'in', day: $('#pDay').value, meal: $('#pMeal').value, name, note: $('#pNote').value.trim(), cuisine: ex.cuisine, price: ex.price, video: ex.video, decidedAt: Date.now() })); closeSheet(); return toast(was === 'in' ? '已更新' : '已收錄'); }
+      bg(api.update(cur.id, 'restos', el.dataset.id, { status: 'in', day: $('#pDay').value, meal: $('#pMeal').value, name, note: $('#pNote').value.trim(), cuisine: ex.cuisine, price: ex.price, video: ex.video, grating: ex.grating, tabelog: ex.tabelog, decidedAt: Date.now() })); closeSheet(); return toast(was === 'in' ? '已更新' : '已收錄'); }
     if (a === 'rno') { bg(api.update(cur.id, 'restos', el.dataset.id, { status: 'no', decidedAt: Date.now() })); return toast('已婉拒'); }
     if (a === 'rback') { await api.update(cur.id, 'restos', el.dataset.id, { status: 'pending' }); return; }
     if (a === 'rdel') { if (!confirm('確定刪除？')) return; await api.remove(cur.id, 'restos', el.dataset.id); return; }
