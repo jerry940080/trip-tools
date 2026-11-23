@@ -726,11 +726,27 @@ function openPlace(id) {   // 主辦人收錄：確認排在哪天哪餐
    正式名單的店任何人都讀得到，所以照片是公開的：只放店面、餐點，不要放人。 */
 const RPH = {};   // 表單裡目前的照片：undefined＝沒動、''＝拿掉、data URL＝新選的
 const rphHTML = (src, p) => src ? `<img src="${esc(src)}" alt=""><div class="rph-b"><button type="button" data-act="rphpick" data-p="${p}">換一張</button><button type="button" data-act="rphdel" data-p="${p}">拿掉</button></div>`
-  : `<button type="button" class="rph-add" data-act="rphpick" data-p="${p}">📷 選一張照片<small>店面或招牌菜，不要拍到人</small></button>`;
+  : `<div class="rph-two"><button type="button" class="rph-add" data-act="rphpaste" data-p="${p}">📋 貼上剛複製的圖片<small>在網頁或 Google 地圖長按照片 →「拷貝」</small></button>
+     <button type="button" class="rph-add s" data-act="rphpick" data-p="${p}">📷 從相簿選<small>&nbsp;</small></button></div>
+     <textarea class="rph-paste" data-p="${p}" rows="1" placeholder="貼不進來的話：在這裡長按 →「貼上」（電腦按 Ctrl＋V）"></textarea>
+     <div class="small" style="margin-top:4px">只放店面或餐點，不要拍到人；照片會公開在行程網站上。</div>`;
 async function rphPick(p, file) {
   if (!file) return; const box = $('#' + p + 'PhBox'); if (box) box.innerHTML = '<div class="small" style="padding:14px">照片處理中…</div>';
   try { const { data } = await phShrink(file, 640, 150); RPH[p] = data; if (box) box.innerHTML = rphHTML(data, p); }
   catch (e) { if (box) box.innerHTML = rphHTML(RPH[p] || '', p); toast('讀不到這張照片，請換 JPEG 或 PNG'); }
+}
+// 貼上：剪貼簿裡的圖片（網頁或 Google 地圖長按照片「拷貝」）。表單開著時，在表單任何地方 Ctrl＋V 都收
+const clipImg = dt => { for (const it of (dt && dt.items) || []) if (it.kind === 'file' && /^image\//.test(it.type)) return it.getAsFile(); return null; };
+document.addEventListener('paste', e => { const box = $('#rPhBox') || $('#pPhBox'); if (!box || $('#dim').hidden) return;
+  const f = clipImg(e.clipboardData), p = box.id[0];
+  if (f) { e.preventDefault(); return rphPick(p, f); }
+  if (e.target.classList && e.target.classList.contains('rph-paste')) { e.preventDefault();
+    toast(/<img/i.test(e.clipboardData.getData('text/html') || '') ? '這個網頁的圖片沒辦法直接貼，請先存到相簿再按「從相簿選」' : '剪貼簿裡沒有圖片，請先在照片上長按 →「拷貝」'); } });
+async function rphClip(p) {   // 按鈕讀剪貼簿（Chrome／Safari 會問一次要不要允許貼上）
+  try { const L = await navigator.clipboard.read();
+    for (const it of L) { const t = it.types.find(x => /^image\//.test(x)); if (t) return rphPick(p, new File([await it.getType(t)], 'paste.' + t.split('/')[1], { type: t })); }
+    toast('剪貼簿裡沒有圖片，請先在照片上長按 →「拷貝」'); }
+  catch (e) { const ta = document.querySelector('.rph-paste[data-p="' + p + '"]'); if (ta) ta.focus(); toast('這個瀏覽器不能直接讀剪貼簿，請在下面的框長按 →「貼上」'); }
 }
 document.addEventListener('change', e => { const m = /^(r|p)PhF$/.exec(e.target.id || ''); if (m) { rphPick(m[1], e.target.files[0]); e.target.value = ''; } });
 function restoExtra(o, p) {   // 料理類型、價格、影片網址（推薦表單與主辦人編輯共用）
@@ -983,6 +999,7 @@ document.addEventListener('click', async ev => {
     if (a === 'radd') { RF = null; return openResto(); }
     if (a === 'rsave') return await saveResto();
     if (a === 'rphpick') return $('#' + el.dataset.p + 'PhF').click();
+    if (a === 'rphpaste') return rphClip(el.dataset.p);
     if (a === 'rphdel') { RPH[el.dataset.p] = ''; $('#' + el.dataset.p + 'PhBox').innerHTML = rphHTML('', el.dataset.p); return; }
     if (a === 'rin') return openPlace(el.dataset.id);
     if (a === 'rinok') { const was = ((cur.restos || []).find(x => x.id === el.dataset.id) || {}).status, name = $('#pName').value.trim(), ex = readExtra('p');

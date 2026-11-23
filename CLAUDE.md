@@ -354,3 +354,6 @@ GitHub Pages 回 `Cache-Control: max-age=600`，推上去後 10 分鐘內使用�
   存在 restos 文件的 `photo`（data URL）。可換一張、拿掉（存成空字串）；主辦人編輯沒動照片就保留（`RPH[p]` undefined＝沒動）。名單左邊方塊改顯示照片。
   正式名單的店任何人讀得到，**照片是公開的**，表單提示只放店面或餐點、不要拍到人。不用改 firestore.rules（restos 的 create／update 本來就沒限制欄位）。`app.js?v=20261123d`。
   驗證：IzuAtami-trip 對話 scratchpad `rsp/tph.js`（選照片預覽、存 60 KB 471×640、名單縮圖、編輯保留、拿掉）。
+- **貼上照片（同日追加，使用者：從網頁複製的照片要能直接貼，不想另外找檔案）**：照片區改成兩顆按鈕＋一個貼上框：「📋 貼上剛複製的圖片」（`rphClip`：`navigator.clipboard.read()`，Chrome／Safari 會問一次允不允許）、
+  「📷 從相簿選」（原本的檔案選擇）、下面一條 `.rph-paste` 文字框（讀剪貼簿被擋時在這裡長按 →「貼上」，電腦 Ctrl＋V）。表單開著時整頁的 `paste` 事件只要剪貼簿有圖片就收（不會塞進店名欄）；
+  貼到的是文字或只有 `<img>` 的 HTML（有些網頁的圖片不給複製）就提示改用「存到相簿再選」。`app.js?v=20261123e`。驗證 IzuAtami-trip 對話 scratchpad `rsp/tpaste.js`（Ctrl＋V、貼文字提示、按鈕讀剪貼簿、送出存照片）。
